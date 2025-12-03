@@ -144,9 +144,34 @@
   </actuator>
   
   <sensor>
-    <!-- End-effector position sensor -->
+    <jointpos name="jp_shoulder_pan" joint="shoulder_pan"/>
+    <jointpos name="jp_shoulder_lift" joint="shoulder_lift"/>
+    <jointpos name="jp_elbow_flex" joint="elbow_flex"/>
+    <jointpos name="jp_wrist_flex" joint="wrist_flex"/>
+    <jointpos name="jp_wrist_roll" joint="wrist_roll"/>
+    <jointpos name="jp_gripper" joint="gripper"/>
+
+    <jointvel name="jv_shoulder_pan" joint="shoulder_pan"/>
+    <jointvel name="jv_shoulder_lift" joint="shoulder_lift"/>
+    <jointvel name="jv_elbow_flex" joint="elbow_flex"/>
+    <jointvel name="jv_wrist_flex" joint="wrist_flex"/>
+    <jointvel name="jv_wrist_roll" joint="wrist_roll"/>
+    <jointvel name="jv_gripper" joint="gripper"/>
+
+    <actuatorfrc name="af_shoulder_pan" actuator="shoulder_pan"/>
+    <actuatorfrc name="af_shoulder_lift" actuator="shoulder_lift"/>
+    <actuatorfrc name="af_elbow_flex" actuator="elbow_flex"/>
+    <actuatorfrc name="af_wrist_flex" actuator="wrist_flex"/>
+    <actuatorfrc name="af_wrist_roll" actuator="wrist_roll"/>
+    <actuatorfrc name="af_gripper" actuator="gripper"/>
+
     <framepos name="ee_pos" objtype="site" objname="gripperframe"/>
-    <!-- Trace sensor for end-effector trajectory visualization -->
+    <framequat name="ee_quat" objtype="site" objname="gripperframe"/>
+    <framelinvel name="ee_vel" objtype="site" objname="gripperframe"/>
+    <gyro name="ee_gyro" site="gripperframe"/>
+    <accelerometer name="ee_acc" site="gripperframe"/>
+
+    <!-- Trace sensor for end-effector trajectory visualization (kept from before, but might duplicate or be ignored by Base) -->
     <framepos name="trace_ee" objtype="site" objname="gripperframe"/>
   </sensor>
   
