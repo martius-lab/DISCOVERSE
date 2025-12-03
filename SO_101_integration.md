@@ -23,7 +23,7 @@ This document summarizes the integration of the LeRobot SO-101 arm into the DISC
 - Solves for joint positions given a target end-effector position and orientation.
 - Configured specifically for the 6-DOF SO-101 arm (5 arm joints + 1 gripper), targeting the `gripperframe` site relative to `baseframe`.
 
-### 4. Example Task: Pick Milk (`examples/tasks_so101/so101_pick_milk.py`) THIS DOESN'T WORK PROPERLY YET, the frame transforms are off
+### 4. Example Task: Pick Milk (`examples/tasks_so101/so101_pick_milk.py`) THIS DOESN'T WORK PROPERLY YET because the gripper offset needs to be fixed
 - A complete example script utilizing `SO101TaskBase` and `SO101_IK`.
 - Implements a state machine to:
   1. Hover over the milk object.

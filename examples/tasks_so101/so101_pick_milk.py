@@ -99,6 +99,7 @@ def main():
                     tmat_block = get_body_tmat(sim_node.mj_data, "cereal")
                     milk_pos_world = tmat_block[:3, 3]
                 except ValueError:
+                    print("Warning: Could not find cereal or cereal_2 body, using approximate position")
                     milk_pos_world = np.array([0.075, 0.085, 0.65]) # Approximate pos
             
             # Get Base pose (World Frame) and compute transform to Local Frame
@@ -117,7 +118,7 @@ def main():
                 print(f"State Transition: -> {stm.state_idx}")
                 # Shift target to accommodate half-gripper geometry
                 # Moving further away (in Y) so the fixed finger clears the object
-                grasp_offset = np.array([0, -0.045, 0])
+                grasp_offset = np.array([0, -0.045, 0]) # Changed to negative Y direction
 
                 if stm.state_idx == 0: # Hover
                     target_pos_local = milk_pos_local + np.array([0, 0, 0.15]) + grasp_offset
@@ -132,11 +133,11 @@ def main():
                     if dist_to_base < 0.15: target_pos_local[0] = max(target_pos_local[0], 0.15)
                     sim_node.tctr_gripper[:] = 1.7 
                 elif stm.state_idx == 2: # Move Down
-                    target_pos_local = milk_pos_local + np.array([0, 0, 0.08]) + grasp_offset
+                    target_pos_local = milk_pos_local + np.array([0, 0, 0.04]) + grasp_offset # Z-offset reduced from 0.08 to 0.06
                     if dist_to_base < 0.15: target_pos_local[0] = max(target_pos_local[0], 0.15)
                     sim_node.tctr_gripper[:] = 1.7 
                 elif stm.state_idx == 3: # Close Gripper
-                    target_pos_local = milk_pos_local + np.array([0, 0, 0.08]) + grasp_offset
+                    target_pos_local = milk_pos_local + np.array([0, 0, 0.04]) + grasp_offset # Z-offset reduced from 0.08 to 0.06
                     if dist_to_base < 0.15: target_pos_local[0] = max(target_pos_local[0], 0.15)
                     sim_node.tctr_gripper[:] = 0.0 
                 elif stm.state_idx == 4: # Move Up
