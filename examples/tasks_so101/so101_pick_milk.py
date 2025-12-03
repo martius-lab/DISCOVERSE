@@ -25,15 +25,15 @@ class SO101SimNode(SO101TaskBase):
     def check_success(self):
         # Check if milk_0 is lifted
         try:
-            milk_pos = self.mj_data.body("milk_0").xpos
+            milk_pos = self.mj_data.body("cereal_2").xpos
         except KeyError:
             try:
-                milk_pos = self.mj_data.body("milk").xpos
+                milk_pos = self.mj_data.body("cereal").xpos
             except KeyError:
                 return False
                 
-        # Table height is 0.6, so if it is > 0.65 it is lifted
-        if milk_pos[2] > 0.65:
+        # Table height is 0.6. Initial milk Z is ~0.65. Lift threshold 0.75.
+        if milk_pos[2] > 0.75:
             return True
         return False
 
@@ -84,17 +84,19 @@ def main():
         
         print(f"Starting task {data_idx}...")
         
+        step_cnt = 0
         while sim_node.running:
+            step_cnt += 1
             target_pos_local = None
-            target_ori_mat_local = R.from_euler("xyz", [0, np.pi, 0]).as_matrix() # Gripper down (assuming Base is identity wrt World)
+            target_ori_mat_local = R.from_euler("xyz", [0, np.pi, 0]).as_matrix() # Gripper down
             
             # Get milk position (World Frame)
             try:
-                tmat_block = get_body_tmat(sim_node.mj_data, "milk_0")
+                tmat_block = get_body_tmat(sim_node.mj_data, "cereal_2")
                 milk_pos_world = tmat_block[:3, 3]
             except ValueError: 
                 try:
-                    tmat_block = get_body_tmat(sim_node.mj_data, "milk")
+                    tmat_block = get_body_tmat(sim_node.mj_data, "cereal")
                     milk_pos_world = tmat_block[:3, 3]
                 except ValueError:
                     milk_pos_world = np.array([0.075, 0.085, 0.65]) # Approximate pos
@@ -106,24 +108,40 @@ def main():
             
             # Convert milk pos to Base Frame
             milk_pos_local = (T_base_world @ np.append(milk_pos_world, 1.0))[:3]
-            # State Machine
+            
+            dist_to_base = np.linalg.norm(milk_pos_local[:2])
+            if step_cnt % 100 == 0:
+                print(f"Step {step_cnt}: Milk Local: {milk_pos_local}, Dist: {dist_to_base:.3f}")
 
             if stm.trigger():
-                print(f"State: {stm.state_idx}")
+                print(f"State Transition: -> {stm.state_idx}")
+                # Shift target to accommodate half-gripper geometry
+                # Moving further away (in Y) so the fixed finger clears the object
+                grasp_offset = np.array([0, -0.045, 0])
+
                 if stm.state_idx == 0: # Hover
-                    target_pos_local = milk_pos_local + np.array([0, 0, 0.15])
+                    target_pos_local = milk_pos_local + np.array([0, 0, 0.15]) + grasp_offset
+                    # Safety override if too close
+                    if dist_to_base < 0.15:
+                        print("Milk too close, adjusting hover target further out")
+                        target_pos_local[0] = max(target_pos_local[0], 0.15)
+                        
                     sim_node.tctr_gripper[:] = 1.0 
                 elif stm.state_idx == 1: # Open Gripper fully
-                    target_pos_local = milk_pos_local + np.array([0, 0, 0.15])
+                    target_pos_local = milk_pos_local + np.array([0, 0, 0.15]) + grasp_offset
+                    if dist_to_base < 0.15: target_pos_local[0] = max(target_pos_local[0], 0.15)
                     sim_node.tctr_gripper[:] = 1.7 
                 elif stm.state_idx == 2: # Move Down
-                    target_pos_local = milk_pos_local + np.array([0, 0, 0.08]) 
+                    target_pos_local = milk_pos_local + np.array([0, 0, 0.08]) + grasp_offset
+                    if dist_to_base < 0.15: target_pos_local[0] = max(target_pos_local[0], 0.15)
                     sim_node.tctr_gripper[:] = 1.7 
                 elif stm.state_idx == 3: # Close Gripper
-                    target_pos_local = milk_pos_local + np.array([0, 0, 0.08])
+                    target_pos_local = milk_pos_local + np.array([0, 0, 0.08]) + grasp_offset
+                    if dist_to_base < 0.15: target_pos_local[0] = max(target_pos_local[0], 0.15)
                     sim_node.tctr_gripper[:] = 0.0 
                 elif stm.state_idx == 4: # Move Up
-                    target_pos_local = milk_pos_local + np.array([0, 0, 0.25])
+                    target_pos_local = milk_pos_local + np.array([0, 0, 0.25]) + grasp_offset
+                    if dist_to_base < 0.15: target_pos_local[0] = max(target_pos_local[0], 0.15)
                     sim_node.tctr_gripper[:] = 0.0 
                 
                 # Solve IK if target_pos is set
@@ -152,7 +170,12 @@ def main():
             # Step
             obs, _, _, _, _ = sim_node.step(action)
             
-            # Record
+            # Debug Action Done
+            if step_cnt % 100 == 0:
+                arm_err = np.linalg.norm(sim_node.target_control[:5] - sim_node.sensor_arm_qpos[:5])
+                print(f"Arm Err: {arm_err:.4f}, Done: {sim_node.checkActionDone()}")
+
+            # Record (Disabled for debug to avoid OOM/Kill)
             if len(obs_lst) < sim_node.mj_data.time * cfg.render_set["fps"]:
                 act_lst.append(action.tolist().copy())
                 obs_lst.append(obs)
