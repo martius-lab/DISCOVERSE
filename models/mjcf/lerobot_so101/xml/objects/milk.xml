@@ -1,0 +1,8 @@
+<body>
+      <body name="milk">
+        <geom pos="0 0 0" mesh="milk_mesh" type="mesh" solimp="0.998 0.998 0.001" solref="0.001 1" density="100" friction="0.95 0.3 0.1" material="ceramic" group="0" condim="4"/>
+      </body>
+      <site rgba="0 0 0 0" size="0.005" pos="0 0 -0.085" name="milk_bottom_site"/>
+      <site rgba="0 0 0 0" size="0.005" pos="0 0 0.075" name="milk_top_site"/>
+      <site rgba="0 0 0 0" size="0.005" pos="0.025 0.025 0" name="milk_horizontal_radius_site"/>
+    </body>
