@@ -1,0 +1,56 @@
+<mujocoinclude>
+  <default>
+    <default class="so101_new_calib">
+      <joint damping="1" frictionloss="0.1" armature="0.005"/>
+      <position kp="50"/>
+      <default class="visual">
+        <geom type="mesh" contype="0" conaffinity="0" group="2"/>
+      </default>
+      <default class="collision">
+        <geom group="3"/>
+      </default>
+    </default>
+    <default class="sts3215">
+      <geom contype="0" conaffinity="0"/>
+      <joint damping="0.60" frictionloss="0.052" armature="0.028"/>
+      <position kp="998.22" kv="2.731" forcerange="-2.94 2.94"/>
+    </default>
+    <default class="backlash">
+      <joint damping="0.01" frictionloss="0" armature="0.01" limited="true" range="-0.008726646259971648 0.008726646259971648"/>
+    </default>
+  </default>
+
+  <asset>
+    <material name="base_motor_holder_so101_v1_material" rgba="1 0.82 0.12 1"/>
+    <material name="base_so101_v2_material" rgba="1 0.82 0.12 1"/>
+    <material name="sts3215_03a_v1_material" rgba="0.1 0.1 0.1 1"/>
+    <material name="waveshare_mounting_plate_so101_v2_material" rgba="1 0.82 0.12 1"/>
+    <material name="motor_holder_so101_base_v1_material" rgba="1 0.82 0.12 1"/>
+    <material name="rotation_pitch_so101_v1_material" rgba="1 0.82 0.12 1"/>
+    <material name="upper_arm_so101_v1_material" rgba="1 0.82 0.12 1"/>
+    <material name="under_arm_so101_v1_material" rgba="1 0.82 0.12 1"/>
+    <material name="motor_holder_so101_wrist_v1_material" rgba="1 0.82 0.12 1"/>
+    <material name="sts3215_03a_no_horn_v1_material" rgba="0.1 0.1 0.1 1.0"/>
+    <material name="wrist_roll_pitch_so101_v2_material" rgba="1 0.82 0.12 1"/>
+    <material name="wrist_roll_follower_so101_v1_material" rgba="1 0.82 0.12 1"/>
+    <material name="moving_jaw_so101_v1_material" rgba="1 0.82 0.12 1"/>
+    <material name="goal_material" rgba="0 1 0 0.3"/>
+  </asset>
+
+  <asset>
+    <mesh file="so101/waveshare_mounting_plate_so101_v2.stl"/>
+    <mesh file="so101/sts3215_03a_v1.stl"/>
+    <mesh file="so101/motor_holder_so101_base_v1.stl"/>
+    <mesh file="so101/wrist_roll_follower_so101_v1.stl"/>
+    <mesh file="so101/moving_jaw_so101_v1.stl"/>
+    <mesh file="so101/base_motor_holder_so101_v1.stl"/>
+    <mesh file="so101/upper_arm_so101_v1.stl"/>
+    <mesh file="so101/wrist_roll_pitch_so101_v2.stl"/>
+    <mesh file="so101/under_arm_so101_v1.stl"/>
+    <mesh file="so101/rotation_pitch_so101_v1.stl"/>
+    <mesh file="so101/motor_holder_so101_wrist_v1.stl"/>
+    <mesh file="so101/sts3215_03a_no_horn_v1.stl"/>
+    <mesh file="so101/base_so101_v2.stl"/>
+  </asset>
+
+</mujocoinclude>

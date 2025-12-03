@@ -4,19 +4,20 @@ from discoverse.envs import SimulatorBase
 from discoverse.utils.base_config import BaseConfig
 
 class SO101Cfg(BaseConfig):
-    mjcf_file_path = "mjcf/lerobot_so101/xml/so101_tabletop_manipulation_generated.xml" #This one is the full scene with table and objects
+    mjcf_file_path = "mjcf/manipulator/robot_so101.xml" #This one is the full scene with table and objects
     decimation     = 4
     timestep       = 0.001
     sync           = True
     headless       = False
     init_key       = "0"
+    init_qpos = np.zeros(6)
     render_set     = {
         "fps"    : 30,
         "width"  : 640,
         "height" : 480,
     }
     obs_rgb_cam_id  = [0]
-    rb_link_list   = ["arm_base", "link1", "link2", "link3", "link4", "link5", "link6"]
+    rb_link_list   = ["arm_base", "shoulder", "upper_arm", "lower_arm", "wrist", "gripper", "moving_jaw_so101_v1"]
     
     obj_list       = []
     use_gaussian_renderer = False 
@@ -29,15 +30,19 @@ class SO101Base(SimulatorBase):
 
     def post_load_mjcf(self):
         try:
-            self.init_joint_pose = self.mj_model.key(self.config.init_key).qpos[:self.nj]
-            self.init_joint_ctrl = np.zeros(self.na)
+            if hasattr(self.config, "init_qpos") and self.config.init_qpos is not None:
+                assert len(self.config.init_qpos) == self.nj, "init_qpos length must match the number of joints"
+                self.init_joint_pose = np.array(self.config.init_qpos) 
+                self.init_joint_ctrl = self.init_joint_pose.copy()
+            else:
+                raise KeyError("init_qpos not found in config")
         except KeyError as e:
             self.init_joint_pose = np.zeros(self.nj)
-            self.init_joint_ctrl = np.zeros(self.na)
+            self.init_joint_ctrl = np.zeros(self.nj)
 
-        self.sensor_arm_qpos = self.mj_data.sensordata[:6]
-        self.sensor_arm_qvel = self.mj_data.sensordata[6:12]
-        self.sensor_arm_force = self.mj_data.sensordata[12:18]
+        self.sensor_joint_qpos = self.mj_data.sensordata[:6]
+        self.sensor_joint_qvel = self.mj_data.sensordata[6:12]
+        self.sensor_joint_force = self.mj_data.sensordata[12:18]
         self.sensor_endpoint_posi_local = self.mj_data.sensordata[18:21]
         self.sensor_endpoint_quat_local = self.mj_data.sensordata[21:25]
         self.sensor_endpoint_linear_vel_local = self.mj_data.sensordata[25:28]
@@ -64,12 +69,12 @@ class SO101Base(SimulatorBase):
     def getObservation(self):
         self.obs = {
             "time" : self.mj_data.time,
-            "jq"   : self.sensor_arm_qpos.tolist(),
-            "jv"   : self.sensor_arm_qvel.tolist(),
-            "jf"   : self.sensor_arm_force.tolist(),
+            "jq"   : self.sensor_joint_qpos.tolist(),
+            "jv"   : self.sensor_joint_qvel.tolist(),
+            "jf"   : self.sensor_joint_force.tolist(),
             "ep"   : self.sensor_endpoint_posi_local.tolist(),
             "eq"   : self.sensor_endpoint_quat_local.tolist(),
-            "img"  : self.img_rgb_obs_s
+            "img"  : self.img_rgb_obs_s.copy()
         }
         return self.obs
 

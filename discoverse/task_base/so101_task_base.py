@@ -1,16 +1,20 @@
 import os
 import json
-import shutil
+import glfw
 import mujoco
+import numpy as np
+from scipy.spatial.transform import Rotation
+from discoverse.utils import get_random_texture
 import mediapy
 import numpy as np
+import shutil
 
 from discoverse.robots_env.so101_base import SO101Base, SO101Cfg
 from discoverse.utils import get_body_tmat
 
 def recoder_so101(save_path, act_lst, obs_lst, cfg):
     if os.path.exists(save_path):
-        shutil.rmtree(save_path)
+        pass
     os.makedirs(save_path, exist_ok=True)
 
     with open(os.path.join(save_path, "obs_action.json"), "w") as fp:
@@ -35,75 +39,108 @@ def recoder_so101(save_path, act_lst, obs_lst, cfg):
 
 class SO101TaskBase(SO101Base):
     target_control = np.zeros(6)
+    joint_move_ratio = np.zeros(6)
     action_done_dict = {
-        "arm"           : False,
-        "gripper"       : False,
-        "delay"         : False,
+        "joint"   : False,
+        "gripper" : False,
+        "delay"   : False,
     }
     delay_cnt = 0
     reset_sig = False
-
-    def __init__(self, config: SO101Cfg):
-        self.target_control = np.zeros(6)
-        
-        # View into target_control for arm (first 5 joints) and gripper (last joint)
-        # SO-101 usually has 6 DOF where the last one is gripper
-        self.tctr_arm = self.target_control[:5] 
-        self.tctr_gripper = self.target_control[5:6]
-
-        super().__init__(config)
+    cam_id = 0
 
     def resetState(self):
         super().resetState()
-        self.target_control[:] = self.init_joint_ctrl.copy()
+        self.target_control[:] = self.init_joint_ctrl[:]
         self.domain_randomization()
         mujoco.mj_forward(self.mj_model, self.mj_data)
         self.reset_sig = True
 
+    def random_table_height(self, table_name="table", obj_name_list=[]):
+        if not hasattr(self, "table_init_posi"):
+            self.table_init_posi = self.mj_model.body(table_name).pos.copy()
+        change_height = np.random.uniform(-0.03, 0.07)
+        self.mj_model.body(table_name).pos = self.table_init_posi.copy()
+        self.mj_model.body(table_name).pos[2] = self.table_init_posi[2] - change_height
+        for obj_name in obj_name_list:
+            self.object_pose(obj_name)[2] -= change_height
+    
+    def random_table_texture(self):
+        self.update_texture("tc_texture", get_random_texture())
+        self.random_material("tc_texture")
+    
+    def random_material(self, mtl_name, random_color=False, emission=False):
+        try:
+            if random_color:
+                self.mj_model.material(mtl_name).rgba[:3] = np.random.rand(3)
+            if emission:
+                self.mj_model.material(mtl_name).emission = np.random.rand()
+            self.mj_model.material(mtl_name).specular = np.random.rand()
+            self.mj_model.material(mtl_name).reflectance = np.random.rand()
+            self.mj_model.material(mtl_name).shininess = np.random.rand()
+        except KeyError:
+            print(f"Warning: material {mtl_name} not found")
+
+    def random_light(self, random_dir=True, random_color=True, random_active=True, write_color=False):
+        if write_color:
+            for i in range(self.mj_model.nlight):
+                self.mj_model.light_ambient[i, :] = np.random.random()
+                self.mj_model.light_diffuse[i, :] = np.random.random()
+                self.mj_model.light_specular[i, :] = np.random.random()
+        elif random_color:
+            self.mj_model.light_ambient[...] = np.random.random(size=self.mj_model.light_ambient.shape)
+            self.mj_model.light_diffuse[...] = np.random.random(size=self.mj_model.light_diffuse.shape)
+            self.mj_model.light_specular[...] = np.random.random(size=self.mj_model.light_specular.shape)
+
+        if random_active:
+            self.mj_model.light_active[:] = np.int32(np.random.rand(self.mj_model.nlight) > 0.5).tolist()
+        
+        if np.sum(self.mj_model.light_active) == 0:
+            self.mj_model.light_active[np.random.randint(self.mj_model.nlight)] = 1
+
+        self.mj_model.light_pos[:,:2] = self.mj_model.light_pos0[:,:2] + np.random.normal(scale=0.3, size=self.mj_model.light_pos[:,:2].shape)
+        self.mj_model.light_pos[:,2] = self.mj_model.light_pos0[:,2] + np.random.normal(scale=0.2, size=self.mj_model.light_pos[:,2].shape)
+
+        if random_dir:
+            self.mj_model.light_dir[:] = np.random.random(size=self.mj_model.light_dir.shape) - 0.5
+            self.mj_model.light_dir[:,2] *= 2.0
+            self.mj_model.light_dir[:] = self.mj_model.light_dir[:] / np.linalg.norm(self.mj_model.light_dir[:], axis=1, keepdims=True)
+            self.mj_model.light_dir[:,2] = -np.abs(self.mj_model.light_dir[:,2])
+
     def domain_randomization(self):
-        """Skip domain randomization for base class"""
         pass
 
-    def updateControl(self, action):
-        # Action should be 6D: 5 arm joints + 1 gripper
-        if len(action) != self.na:
-             pass
-        
-        # Clip action to limits
-        for i in range(self.na):
-            self.mj_data.ctrl[i] = np.clip(action[i], self.mj_model.actuator_ctrlrange[i][0], self.mj_model.actuator_ctrlrange[i][1])
-
     def checkActionDone(self):
-        # Arm convergence (indices 0-4)
-        arm_done = np.allclose(self.target_control[:5], self.sensor_arm_qpos[:5], atol=3e-2) and \
-                   np.abs(self.sensor_arm_qvel[:5]).sum() < 0.1
-        
-        # Gripper convergence (index 5)
-        # Grippers can be stalled while applying force, so qvel check might need to be loose or ignored if stalled
-        gripper_done = np.allclose(self.target_control[5], self.sensor_arm_qpos[5], atol=5e-2) or \
-                       (np.abs(self.sensor_arm_qvel[5]) < 0.01) # Stalled/Finished
-
+        joint_done = np.allclose(self.sensor_joint_qpos[:5], self.target_control[:5], atol=3e-2) and np.abs(self.sensor_joint_qvel[:5]).sum() < 0.1
+        gripper_done = np.allclose(self.sensor_joint_qpos[5], self.target_control[5], atol=0.016) and np.abs(self.sensor_joint_qvel[5]).sum() < 0.005
         self.delay_cnt -= 1
         delay_done = (self.delay_cnt<=0)
-
         self.action_done_dict = {
-            "arm"           : arm_done,
-            "gripper"       : gripper_done,
-            "delay"         : delay_done,
+            "joint"   : joint_done,
+            "gripper" : gripper_done,
+            "delay"   : delay_done,
         }
-        
-        # For simple tasks, we might just return True or a combination
-        return arm_done and gripper_done and delay_done
+        return joint_done and gripper_done and delay_done
 
     def printMessage(self):
         super().printMessage()
-        print("target control : ")
-        print("    tctr_arm         = {}".format(np.array2string(self.tctr_arm, separator=", ")))
-        print("    tctr_gripper     = {}".format(np.array2string(self.tctr_gripper, separator=", ")))
-
+        print("    target control = ", self.target_control)
         print("    action done: ")
         for k, v in self.action_done_dict.items():
             print(f"        {k}: {v}")
 
+        print("camera foyv = ", self.mj_model.vis.global_.fovy)
+        cam_xyz, cam_wxyz = self.getCameraPose(self.cam_id)
+        print(f"    camera_{self.cam_id} =\n({cam_xyz}\n{Rotation.from_quat(cam_wxyz[[1,2,3,0]]).as_matrix()})")
+
     def check_success(self):
         raise NotImplementedError
+    
+    def on_key(self, window, key, scancode, action, mods):
+        ret = super().on_key(window, key, scancode, action, mods)
+        if action == glfw.PRESS:
+            if key == glfw.KEY_MINUS:
+                self.mj_model.vis.global_.fovy = np.clip(self.mj_model.vis.global_.fovy*0.95, 5, 175)
+            elif key == glfw.KEY_EQUAL:
+                self.mj_model.vis.global_.fovy = np.clip(self.mj_model.vis.global_.fovy*1.05, 5, 175)
+        return ret
