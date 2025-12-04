@@ -3,7 +3,128 @@ import time
 import shutil
 import argparse
 import traceback
-
+            elif primitive == "reach":
+                # TO REFACTOR: spike-stage reach updates predicate context only.
+                site_name = params.get("site") or params.get("handle_site")
+                if site_name:
+                    target_pos = self.mj_data.site(site_name).xpos.copy()
+                    if getattr(self.task, "predicate_context", None):
+                        self.task.predicate_context.gripper_position = target_pos
+                return True
+            elif primitive == "lift":
+                # TO REFACTOR: placeholder lift updates held object's Z directly.
+                obj_name = params.get("object") or params.get("object_name")
+                height = params.get("height", 0.05)
+                if obj_name and getattr(self.task, "predicates", None):
+                    try:
+                        current = self.mj_data.body(obj_name).xpos.copy()
+                        current[2] += height
+                        self.mj_data.body(obj_name).xpos[:] = current
+                    except Exception:
+                        pass
+                return True
+            elif primitive == "place_on":
+                obj_name = params.get("object") or params.get("object_name")
+                support = params.get("support") or params.get("support_name")
+                if obj_name and support and getattr(self.task, "predicates", None):
+                    support_pos = self.mj_data.body(support).xpos.copy()
+                    support_pos[2] += 0.02
+                    try:
+                        self.mj_data.body(obj_name).xpos[:] = support_pos
+                    except Exception:
+                        pass
+                    self.task.predicate_context.held_objects.discard(obj_name)
+                return True
+            elif primitive == "place_in":
+                obj_name = params.get("object") or params.get("object_name")
+                container = params.get("container") or params.get("container_name")
+                if obj_name and container and getattr(self.task, "predicates", None):
+                    container_pos = self.mj_data.body(container).xpos.copy()
+                    container_pos[2] += params.get("height", 0.02)
+                    try:
+                        self.mj_data.body(obj_name).xpos[:] = container_pos
+                    except Exception:
+                        pass
+                    self.task.predicate_context.held_objects.discard(obj_name)
+                return True
+            elif primitive == "push":
+                obj_name = params.get("object") or params.get("object_name")
+                direction = np.asarray(params.get("direction", [1.0, 0.0, 0.0]), dtype=float)
+                distance = params.get("distance", 0.1)
+                if obj_name:
+                    direction = direction / (np.linalg.norm(direction) + 1e-8)
+                    shift = direction * distance
+                    try:
+                        self.mj_data.body(obj_name).xpos[:] += shift
+                    except Exception:
+                        pass
+                return True
+            elif primitive == "pull":
+                obj_name = params.get("object") or params.get("object_name")
+                direction = np.asarray(params.get("direction", [-1.0, 0.0, 0.0]), dtype=float)
+                distance = params.get("distance", 0.1)
+                if obj_name:
+                    direction = direction / (np.linalg.norm(direction) + 1e-8)
+                    shift = direction * (-abs(distance))
+                    try:
+                        self.mj_data.body(obj_name).xpos[:] += shift
+                    except Exception:
+                        pass
+                return True
+            elif primitive == "open_joint":
+                joint_name = params.get("joint") or params.get("joint_name")
+                target = params.get("target", 0.2)
+                if joint_name:
+                    try:
+                        joint_id = mujoco.mj_name2id(self.mj_model, mujoco.mjtObj.mjOBJ_JOINT, joint_name)
+                        qaddr = self.mj_model.jnt_qposadr[joint_id]
+                        self.mj_data.qpos[qaddr] = target
+                        if getattr(self.task, "predicate_context", None):
+                            self.task.predicate_context.open_joints.add(joint_name)
+                            self.task.predicate_context.closed_joints.discard(joint_name)
+                    except Exception:
+                        pass
+                return True
+            elif primitive == "close_joint":
+                joint_name = params.get("joint") or params.get("joint_name")
+                target = params.get("target", 0.0)
+                if joint_name:
+                    try:
+                        joint_id = mujoco.mj_name2id(self.mj_model, mujoco.mjtObj.mjOBJ_JOINT, joint_name)
+                        qaddr = self.mj_model.jnt_qposadr[joint_id]
+                        self.mj_data.qpos[qaddr] = target
+                        if getattr(self.task, "predicate_context", None):
+                            self.task.predicate_context.closed_joints.add(joint_name)
+                            self.task.predicate_context.open_joints.discard(joint_name)
+                    except Exception:
+                        pass
+                return True
+            elif primitive == "insert":
+                peg = params.get("peg") or params.get("object")
+                hole = params.get("hole") or params.get("target")
+                depth = params.get("depth", 0.02)
+                if peg and hole and getattr(self.task, "predicates", None):
+                    try:
+                        peg_pos = self.mj_data.body(peg).xpos.copy()
+                        hole_pos = self.mj_data.body(hole).xpos.copy()
+                        peg_pos[:2] = hole_pos[:2]
+                        peg_pos[2] = hole_pos[2] - depth
+                        self.mj_data.body(peg).xpos[:] = peg_pos
+                    except Exception:
+                        pass
+                return True
+            elif primitive == "unblock":
+                blocker = params.get("blocker")
+                distance = params.get("distance", 0.2)
+                if blocker:
+                    try:
+                        self.mj_data.body(blocker).xpos[0] += distance
+                        if getattr(self.task, "predicate_context", None):
+                            target = params.get("target")
+                            self.task.predicate_context.blocked_pairs.discard((blocker, target))
+                    except Exception:
+                        pass
+                return True
 import mink
 import mujoco
 import numpy as np

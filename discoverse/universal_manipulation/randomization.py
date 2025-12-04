@@ -91,6 +91,9 @@ class SceneRandomizer:
             objects_config = randomization_config['objects']
             self._randomize_objects(objects_config, max_attempts)
         
+        if 'articulations' in randomization_config:
+            self._randomize_articulations(randomization_config['articulations'])
+        
         # 随机化相机 - 检查激活状态
         if 'cameras' in randomization_config:
             cameras_config = randomization_config['cameras']
@@ -121,6 +124,31 @@ class SceneRandomizer:
         mujoco.mj_forward(self.mj_model, self.mj_data)
         
         return True
+
+    def _randomize_articulations(self, articulations_config):
+        """
+        初始化或随机化关节位置（用于抽屉、门等）。
+        """
+        for art_config in articulations_config:
+            joint_name = art_config.get('joint')
+            if not joint_name:
+                continue
+            try:
+                joint_id = mujoco.mj_name2id(self.mj_model, mujoco.mjtObj.mjOBJ_JOINT, joint_name)
+                qpos_addr = self.mj_model.jnt_qposadr[joint_id]
+            except Exception:
+                print(f"⚠️ 未找到关节 '{joint_name}'，无法随机化")
+                continue
+
+            if 'qpos_range' in art_config and isinstance(art_config['qpos_range'], (list, tuple)):
+                low, high = art_config['qpos_range']
+                value = float(np.random.uniform(low, high))
+            elif 'value' in art_config:
+                value = float(art_config['value'])
+            else:
+                value = self.mj_data.qpos[qpos_addr]
+
+            self.mj_data.qpos[qpos_addr] = value
     
     def _object_pose(self, body_name):
         """获取物体的位姿（位置xyz和朝向wxyz）"""
@@ -530,9 +558,12 @@ class SceneRandomizer:
         else:
             print(f"⚠️ 不支持的材质类型: {mtl_type}")
             return
-
+        target_texture = self.mj_model.texture(texture_name)
+        target_size = (int(target_texture.width[0]), int(target_texture.height[0]))
+        if random_texture_pil.size != target_size:
+            random_texture_pil = random_texture_pil.resize(target_size, Image.Resampling.LANCZOS)
         # 更新纹理数据
-        self.mj_model.texture(texture_name).data = np.array(random_texture_pil)
+        target_texture.data = np.array(random_texture_pil)
 
         if self.viewer is not None:
             self._update_texture_viewer(texture_name)

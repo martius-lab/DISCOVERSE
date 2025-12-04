@@ -14,6 +14,11 @@ from .task_config import TaskConfigLoader
 from .robot_interface import RobotInterface
 from .randomization import SceneRandomizer
 from .config_utils import load_and_resolve_config, replace_variables
+from .predicates import (
+    PredicateContext,
+    PredicateEvaluator,
+    MuJoCoStateAdapter,
+)
 
 class UniversalTaskBase:
     """通用任务基类"""
@@ -55,6 +60,21 @@ class UniversalTaskBase:
             self.randomization_config = self.task_config.randomization
         else:
             self.randomization_config = None
+
+        # 谓词评估器，用于扩展成功条件
+        try:
+            self._predicate_state = MuJoCoStateAdapter(self.mj_model, self.mj_data)
+            self.predicate_context = PredicateContext()
+            if hasattr(self.robot_config, "end_effector_site"):
+                self.predicate_context.gripper_site = self.robot_config.end_effector_site
+            self.predicates = PredicateEvaluator(
+                self._predicate_state,
+                self.task_config.objects_metadata,
+                self.predicate_context,
+            )
+        except Exception as exc:  # pragma: no cover - MuJoCo adapter failures
+            print(f"⚠️ 初始化谓词评估器失败: {exc}")
+            self.predicates = None
 
     def _create_robot_interface(self, mj_model: mujoco.MjModel, mj_data: mujoco.MjData):
         """
@@ -159,6 +179,47 @@ class UniversalTaskBase:
                 return self._check_orientation_condition(condition)
             elif condition_type == 'height':
                 return self._check_height_condition(condition)
+            elif condition_type == 'on' and self.predicates:
+                return self.predicates.on(
+                    condition.get('object'),
+                    condition.get('support'),
+                    lateral_tolerance=condition.get('lateral_tolerance', 0.05),
+                    height_tolerance=condition.get('height_tolerance', 0.03),
+                )
+            elif condition_type == 'in' and self.predicates:
+                region = condition.get('region', 'inside')
+                return self.predicates.in_region(
+                    condition.get('object'),
+                    condition.get('container'),
+                    region_name=region,
+                )
+            elif condition_type == 'upright' and self.predicates:
+                return self.predicates.upright(
+                    condition.get('object'),
+                    condition.get('threshold', 0.95),
+                )
+            elif condition_type == 'held' and self.predicates:
+                return self.predicates.held(condition.get('object'))
+            elif condition_type == 'open' and self.predicates:
+                return self.predicates.open(condition.get('object'))
+            elif condition_type == 'closed' and self.predicates:
+                return self.predicates.closed(condition.get('object'))
+            elif condition_type == 'reachable' and self.predicates:
+                radius = condition.get('radius')
+                return self.predicates.reachable(condition.get('object'), radius)
+            elif condition_type == 'visible' and self.predicates:
+                return self.predicates.visible(condition.get('object'))
+            elif condition_type == 'clear' and self.predicates:
+                return self.predicates.clear(condition.get('support'))
+            elif condition_type == 'access' and self.predicates:
+                return self.predicates.access(condition.get('object'))
+            elif condition_type == 'inserted' and self.predicates:
+                return self.predicates.inserted(
+                    condition.get('peg'),
+                    condition.get('hole'),
+                    depth=condition.get('depth', 0.02),
+                    angle_tol=condition.get('angle_tol', 0.1),
+                )
             else:
                 print(f"警告：未知的条件类型: {condition_type}")
                 return False

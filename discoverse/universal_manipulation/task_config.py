@@ -6,8 +6,11 @@
 
 import os
 import yaml
+import re
 from typing import Dict, List, Any, Optional
+
 from .config_utils import load_and_resolve_config, replace_variables
+from .predicates import build_metadata_map, ObjectMetadata
 
 class TaskConfigLoader:
     """任务配置加载器"""
@@ -38,6 +41,7 @@ class TaskConfigLoader:
         """
         loader = cls()
         loader.config = config_dict
+        loader._post_process_config()
         loader._validate_config()
         return loader
     
@@ -62,15 +66,31 @@ class TaskConfigLoader:
             # 使用模板化配置解析
             self.config = load_and_resolve_config(config_path)
             self.config = replace_variables(self.config)
-            
-            # 验证配置文件
+
+            self._post_process_config()
             self._validate_config()
-            
+
             return self.config
             
         except yaml.YAMLError as e:
             raise yaml.YAMLError(f"Failed to parse task config file {config_path}: {e}")
     
+    def _post_process_config(self):
+        """补充和缓存扩展字段"""
+        self._objects_metadata: Dict[str, ObjectMetadata] = build_metadata_map(
+            self.config.get("objects", [])
+        )
+        self._goal_expression: Optional[str] = self.config.get("goal")
+        self._base_goal_family: Optional[str] = self.config.get("base_goal_family")
+        self._obstructions: List[Any] = self.config.get("obstructions", [])
+        self._expected_min_steps: Optional[int] = self.config.get("expected_min_steps")
+        self._subgoals: List[Any] = self.config.get("subgoals", [])
+
+        if self._goal_expression and not self.config.get("success_check"):
+            self.config["success_check"] = self._compile_goal_to_success_check(
+                self._goal_expression
+            )
+
     def _validate_config(self):
         """验证任务配置文件的必要字段"""
         required_fields = [
@@ -177,6 +197,30 @@ class TaskConfigLoader:
         return self.config.get('success_check')
     
     @property
+    def goal_expression(self) -> Optional[str]:
+        return self._goal_expression
+
+    @property
+    def base_goal_family(self) -> Optional[str]:
+        return self._base_goal_family
+
+    @property
+    def obstructions(self) -> List[Any]:
+        return self._obstructions
+
+    @property
+    def expected_min_steps(self) -> Optional[int]:
+        return self._expected_min_steps
+
+    @property
+    def subgoals(self) -> List[Any]:
+        return self._subgoals
+
+    @property
+    def objects_metadata(self) -> Dict[str, ObjectMetadata]:
+        return self._objects_metadata
+    
+    @property
     def randomization(self) -> Optional[Dict[str, Any]]:
         """获取随机化配置"""
         return self.config.get('randomization')
@@ -197,6 +241,75 @@ class TaskConfigLoader:
                         print(f"❌ 随机化物体配置 {i} 缺少 'name' 字段")
                         return False
         return True
+
+    # ------------------------------------------------------------------
+    # Goal compilation helpers
+
+    def _compile_goal_to_success_check(self, goal_expr: str) -> Dict[str, Any]:
+        """
+        将goal表达式解析为success_check配置。
+        当前实现支持单层的 AND / OR 表达式。
+        """
+
+        clean_expr = goal_expr.strip()
+        if "∨" in clean_expr or re.search(r"\bor\b", clean_expr, flags=re.IGNORECASE):
+            operator = "or"
+            parts = re.split(r"\s*(?:∨|\bor\b)\s*", clean_expr, flags=re.IGNORECASE)
+        else:
+            operator = "and"
+            parts = re.split(r"\s*(?:∧|\band\b)\s*", clean_expr, flags=re.IGNORECASE)
+
+        conditions = []
+        for raw in parts:
+            raw = raw.strip()
+            if raw.startswith("(") and raw.endswith(")"):
+                raw = raw[1:-1].strip()
+            if not raw:
+                continue
+            match = re.match(r"([A-Za-z_]+)\((.*)\)", raw)
+            if not match:
+                continue
+            predicate = match.group(1).lower()
+            args = [arg.strip() for arg in match.group(2).split(",")]
+
+            condition: Dict[str, Any] = {}
+            if predicate == "on" and len(args) >= 2:
+                condition = {"type": "on", "object": args[0], "support": args[1]}
+            elif predicate == "in" and len(args) >= 2:
+                condition = {"type": "in", "object": args[0], "container": args[1]}
+            elif predicate == "upright" and len(args) >= 1:
+                threshold = float(args[1]) if len(args) > 1 else 0.95
+                condition = {
+                    "type": "upright",
+                    "object": args[0],
+                    "threshold": threshold,
+                }
+            elif predicate == "held" and len(args) >= 1:
+                condition = {"type": "held", "object": args[0]}
+            elif predicate == "inserted" and len(args) >= 2:
+                depth = float(args[2]) if len(args) > 2 else 0.02
+                angle_tol = float(args[3]) if len(args) > 3 else 0.1
+                condition = {
+                    "type": "inserted",
+                    "peg": args[0],
+                    "hole": args[1],
+                    "depth": depth,
+                    "angle_tol": angle_tol,
+                }
+            elif predicate == "clear" and len(args) >= 1:
+                condition = {"type": "clear", "support": args[0]}
+            elif predicate == "access" and len(args) >= 1:
+                condition = {"type": "access", "object": args[0]}
+
+            if condition:
+                conditions.append(condition)
+
+        return {
+            "method": "combined" if operator in ("and", "or") else "simple",
+            "operator": operator,
+            "conditions": conditions,
+        }
+
 
     def __str__(self) -> str:
         """字符串表示"""
