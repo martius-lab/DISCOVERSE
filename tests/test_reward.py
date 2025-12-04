@@ -3,6 +3,7 @@ import numpy as np
 from discoverse.universal_manipulation.predicates import DictWorldState, PredicateContext, PredicateEvaluator
 from discoverse.universal_manipulation.primitives import PrimitiveController
 from discoverse.universal_manipulation.reward import RewardShaper, ShapingConfig
+from examples.universal_tasks.universal_task_runtime import UniversalRuntimeTaskExecutor
 
 
 def build_world():
@@ -51,3 +52,24 @@ def test_success_reward_requires_hold_time():
 
     reward_third = shaper.step(0.05)
     assert np.isclose(reward_third, 0.0)
+
+
+def test_runtime_creates_reward_shaper(primitive_controller):
+    _, predicates = primitive_controller
+    executor = object.__new__(UniversalRuntimeTaskExecutor)
+    executor.task = type(
+        "TaskStub",
+        (),
+        {
+            "task_config": type("Cfg", (), {"subgoals": [{"type": "held", "object": "block"}]})(),
+            "predicates": predicates,
+        },
+    )()
+    executor.reward_shaper = None
+    executor.shaped_rewards = []
+    executor.last_shaped_reward = 0.0
+    executor._maybe_create_reward_shaper()
+    assert executor.reward_shaper is not None
+    predicates.context.gripper_position = np.array([0.0, 0.0, 0.05])
+    executor._update_reward_shaping(0.02)
+    assert executor.shaped_rewards

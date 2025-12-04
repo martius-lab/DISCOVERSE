@@ -1,0 +1,65 @@
+task_name: invalid
+base_goal_family: insert
+description: Auto-generated insert task
+objects:
+- name: peg
+  type: peg
+  tags:
+  - graspable
+  - insertable
+  initial_position:
+  - 0.0
+  - 0.2
+  - 0.1
+  geom_size:
+  - 0.01
+  - 0.01
+  - 0.05
+  initial_quat:
+  - 0.707
+  - 0.0
+  - 0.0
+  - 0.707
+- name: hole
+  type: hole
+  tags:
+  - insert_target
+  initial_position:
+  - 0.0
+  - 0.2
+  - 0.0
+  geom_size:
+  - 0.02
+  - 0.02
+  - 0.02
+goal: Inserted(peg, hole, 0.05, 0.2)
+obstructions: []
+states:
+- name: grasp_peg
+  primitive: grasp
+  params:
+    object: peg
+- name: insert_peg
+  primitive: insert
+  params:
+    peg: peg
+    hole: hole
+    depth: 0.05
+    angle_tol: 0.2
+- name: release_peg
+  primitive: release
+  params:
+    object: peg
+success_check:
+  method: combined
+  operator: and
+  conditions:
+  - type: inserted
+    peg: peg
+    hole: hole
+    depth: 0.05
+    angle_tol: 0.2
+expected_min_steps: 3
+subgoals:
+- Held(peg)
+- Inserted(peg, hole, 0.05, 0.2)

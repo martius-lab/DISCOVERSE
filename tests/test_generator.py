@@ -1,4 +1,5 @@
 from pathlib import Path
+import copy
 
 import numpy as np
 import pytest
@@ -23,11 +24,13 @@ OBJECT_DEFINITION = [
         "tags": ["container", "openable"],
         "initial_position": [0.2, 0.0, 0.0],
         "geom_size": [0.05, 0.05, 0.05],
-        "joint_name": "container_joint",
-        "joint_limits": [0.0, 0.2],
-        "open_target": 0.2,
-        "closed_value": 0.0,
-        "handle_site": "handle_site",
+        "articulation": {
+            "joint": "container_joint",
+            "limits": [0.0, 0.25],
+            "handle_site": "handle_site",
+            "closed": 0.0,
+            "open": 0.2,
+        },
         "regions": {
             "inside": {"body": "container", "type": "cylinder", "radius": 0.08, "height": 0.1}
         },
@@ -106,6 +109,7 @@ def test_generate_put_in_task(tmp_path):
     assert loader.success_check["operator"] == "and"
 
     assert _execute_plan(generator, config.objects, config.wrappers, spec["states"], spec["goal"])
+    assert [sg["type"] for sg in spec["subgoals"]] == ["reach", "held", "in"]
 
 
 def test_closed_receptacle_wrapper_requires_open(tmp_path):
@@ -119,6 +123,8 @@ def test_closed_receptacle_wrapper_requires_open(tmp_path):
     result = generator.generate(config)
     spec = result.specification
     assert spec["states"][0]["primitive"] == "open_joint"
+
+    assert spec["subgoals"][0]["type"] == "open"
 
     success_without_open = _execute_plan(generator, config.objects, config.wrappers, spec["states"][1:], spec["goal"])
     assert not success_without_open
@@ -136,6 +142,8 @@ def test_out_of_reach_wrapper_requires_pull(tmp_path):
     spec = result.specification
     assert spec["states"][0]["primitive"] == "pull"
 
+    assert spec["subgoals"][0]["type"] == "reachable"
+
     success_without_pull = _execute_plan(generator, config.objects, config.wrappers, spec["states"][1:], spec["goal"])
     assert not success_without_pull
 
@@ -151,6 +159,7 @@ def test_occluded_object_wrapper(tmp_path):
     result = generator.generate(config)
     spec = result.specification
     assert spec["states"][0]["primitive"] == "unblock"
+    assert spec["subgoals"][0]["type"] == "clear"
 
 
 def test_generated_yaml_saved(tmp_path):
@@ -165,6 +174,61 @@ def test_generated_yaml_saved(tmp_path):
     assert result.yaml_path.exists()
     loaded = TaskConfigLoader.from_dict(result.specification)
     assert loaded.task_name == "put_in_saved"
+
+
+def test_subgoals_are_structured_dicts(tmp_path):
+    generator = TaskGenerator(output_dir=tmp_path)
+    config = GeneratorConfig(
+        task_name="subgoal_structure",
+        base_goal_family="put_on",
+        objects=OBJECT_DEFINITION[:2] + [OBJECT_DEFINITION[2]],
+        wrappers=[],
+    )
+    spec = generator.generate(config).specification
+    assert all(isinstance(entry, dict) and "type" in entry for entry in spec["subgoals"])
+
+
+def test_redundant_wrapper_rejected(tmp_path):
+    generator = TaskGenerator(output_dir=tmp_path)
+    objects = copy.deepcopy(OBJECT_DEFINITION[:2])
+    articulation = objects[1]["articulation"]
+    articulation["closed"] = articulation["open"]
+    config = GeneratorConfig(
+        task_name="redundant_wrapper",
+        base_goal_family="put_in",
+        objects=objects,
+        wrappers=["closed_receptacle"],
+    )
+    with pytest.raises(ValueError):
+        generator.generate(config)
+
+
+def test_combined_wrappers_extend_subgoals(tmp_path):
+    generator = TaskGenerator(output_dir=tmp_path)
+    objects = copy.deepcopy(OBJECT_DEFINITION[:3])
+    config = GeneratorConfig(
+        task_name="combo_wrappers",
+        base_goal_family="put_in",
+        objects=objects,
+        wrappers=["closed_receptacle", "occluded_object"],
+    )
+    spec = generator.generate(config).specification
+    subgoal_types = [entry["type"] for entry in spec["subgoals"]]
+    assert subgoal_types[0] == "open"
+    assert "clear" in subgoal_types
+
+
+def test_subgoal_sequence_matches_plan(tmp_path):
+    generator = TaskGenerator(output_dir=tmp_path)
+    config = GeneratorConfig(
+        task_name="sequence_check",
+        base_goal_family="insert",
+        objects=OBJECT_DEFINITION[-2:],
+        wrappers=[],
+    )
+    spec = generator.generate(config).specification
+    subgoal_types = [sg["type"] for sg in spec["subgoals"]]
+    assert subgoal_types == ["reach", "held", "inserted"]
 
 
 def test_insertion_feasibility(tmp_path):

@@ -60,3 +60,50 @@ def test_access_requires_all_components(primitive_controller):
 
     predicates.context.unreachable_objects.clear()
     assert predicates.access(obj)
+
+
+def test_blocks_updates_with_unblock(primitive_controller):
+    controller, predicates = primitive_controller
+    controller.grasp(object="blocker")
+    controller.place_on(object="blocker", support="block")
+    assert predicates.blocks("blocker", "block")
+
+    controller.unblock(blocker="blocker", target="block", distance=0.2)
+    assert not predicates.blocks("blocker", "block")
+
+
+def test_visible_respects_occluder(primitive_controller):
+    controller, predicates = primitive_controller
+    controller.world.bodies["block"].position = np.array([0.2, 0.0, 0.04])
+    controller.world.bodies["blocker"].position = np.array([0.1, 0.0, 0.04])
+    predicates.context.gripper_position = np.array([0.0, 0.0, 0.04])
+    assert predicates.visible("block")
+
+    predicates.context.blocked_pairs.add(("blocker", "block"))
+    assert not predicates.visible("block")
+
+    controller.unblock(blocker="blocker", target="block", distance=0.2)
+    predicates.context.blocked_pairs.clear()
+    controller.world.bodies["blocker"].position = np.array([0.1, 0.0, 0.04])
+    assert not predicates.visible("block")
+
+    controller.world.bodies["blocker"].position = np.array([0.4, 0.0, 0.04])
+    assert predicates.visible("block")
+
+
+def test_at_region_matches_inside(primitive_controller):
+    controller, predicates = primitive_controller
+    controller.grasp(object="block")
+    controller.open_joint(joint_name="container_joint", target=0.25)
+    controller.place_in(object="block", container="container", height_offset=0.02)
+    assert predicates.at("block", "container.inside", tolerance=0.05)
+
+
+def test_reachable_toggles_with_context(primitive_controller):
+    controller, predicates = primitive_controller
+    predicates.context.gripper_position = np.array([0.0, 0.0, 0.04])
+    assert predicates.reachable("block")
+    predicates.context.unreachable_objects.add("block")
+    assert not predicates.reachable("block")
+    predicates.context.unreachable_objects.clear()
+    assert predicates.reachable("block")

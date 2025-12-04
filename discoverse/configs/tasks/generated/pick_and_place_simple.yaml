@@ -1,0 +1,69 @@
+# Simple pick-and-place (place_on) demo task
+
+task_name: "generated/pick_and_place_simple"
+description: "Pick up the green block and place it onto the pink bowl"
+
+# Extended metadata for predicates (names must match the MJCF environment)
+objects:
+  - name: "block_green"
+    type: "block"
+    tags: ["graspable", "liftable"]
+  - name: "bowl_pink"
+    type: "container"
+    tags: ["receptacle", "support_surface"]
+
+base_goal_family: "put_on"
+goal: 'On(block_green, bowl_pink) ∧ Upright(block_green, 0.95)'
+expected_min_steps: 6
+
+success_check:
+  method: "combined"
+  operator: "and"
+  conditions:
+    - { type: "on", object: "block_green", support: "bowl_pink" }
+    - { type: "upright", object: "block_green", threshold: 0.95 }
+
+# Optional runtime randomization (kept minimal for clarity)
+randomization:
+  objects:
+    - { name: "block_green", x_range: [0.2, 0.4], y_range: [-0.2, 0.2], min_distance: 0.05 }
+    - { name: "bowl_pink",  x_range: [0.2, 0.4], y_range: [-0.2, 0.2], min_distance: 0.10 }
+
+# State sequence: moves + symbolic primitives
+states:
+  - name: "approach_block"
+    primitive: "move_to_object"
+    params: { object_name: "block_green", offset: [0, 0, 0.005] }
+    gripper_state: "open"
+
+  - name: "grasp_block"
+    primitive: "grasp"
+    params: { object: "block_green" }
+    gripper_state: "close"
+
+  - name: "lift_block"
+    primitive: "lift"
+    params: { object: "block_green", height: 0.07 }
+    gripper_state: "close"
+
+  - name: "move_over_bowl"
+    primitive: "move_to_object"
+    params: { object_name: "bowl_pink", offset: [0, 0, 0.10] }
+    gripper_state: "close"
+
+  - name: "place_on_bowl"
+    primitive: "place_on"
+    params: { object: "block_green", support: "bowl_pink" }
+    gripper_state: "close"
+
+  - name: "release_block"
+    primitive: "release"
+    params: { object: "block_green" }
+    gripper_state: "open"
+
+# Subgoals for optional reward shaping
+subgoals:
+  - { type: "reach", object: "block_green" }
+  - { type: "held", object: "block_green" }
+  - { type: "on", object: "block_green", support: "bowl_pink" }
+

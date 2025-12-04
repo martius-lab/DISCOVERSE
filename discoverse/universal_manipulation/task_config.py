@@ -284,6 +284,15 @@ class TaskConfigLoader:
                     "object": args[0],
                     "threshold": threshold,
                 }
+            elif predicate == "at" and len(args) >= 2:
+                region = args[1]
+                tolerance = float(args[2]) if len(args) > 2 else 0.05
+                condition = {
+                    "type": "at",
+                    "object": args[0],
+                    "region": region,
+                    "tolerance": tolerance,
+                }
             elif predicate == "held" and len(args) >= 1:
                 condition = {"type": "held", "object": args[0]}
             elif predicate == "inserted" and len(args) >= 2:
@@ -300,6 +309,12 @@ class TaskConfigLoader:
                 condition = {"type": "clear", "support": args[0]}
             elif predicate == "access" and len(args) >= 1:
                 condition = {"type": "access", "object": args[0]}
+            elif predicate == "open" and len(args) >= 1:
+                condition = {"type": "open", "object": args[0]}
+            elif predicate == "closed" and len(args) >= 1:
+                condition = {"type": "closed", "object": args[0]}
+            elif predicate == "visible" and len(args) >= 1:
+                condition = {"type": "visible", "object": args[0]}
 
             if condition:
                 conditions.append(condition)
