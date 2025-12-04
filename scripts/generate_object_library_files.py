@@ -184,9 +184,38 @@ def main():
         # Make directory for MJCF output if it doesn't exist
         library_object_dir = mjcf_output_path / "library_objects"
         library_object_dir.mkdir(parents=True, exist_ok=True)
-        # Write MJCF file
+        # Write MJCF dependency file
         mjcf_file_path = library_object_dir / f"{obj_name}_dependencies.xml"
-        dependencies.write(mjcf_file_path)
+        ET.indent(dependencies, space="  ")
+        dependencies.write(mjcf_file_path, encoding="unicode")
+
+        # Create XML tree for object MJCF file
+        root_object = ET.Element("mujocoinclude")
+        object_tree = ET.ElementTree(root_object)
+
+        # Visual geom
+        body = ET.SubElement(
+            root_object,
+            "geom",
+            material=f"{obj_name}_material",
+            mesh=f"{obj_name}",
+            type="mesh",
+            contype="0",
+            conaffinity="0",
+        )
+        # Collision geoms
+        for j in range(len(collision_meshes)):
+            ET.SubElement(
+                root_object,
+                "geom",
+                type="mesh",
+                rgba="0.5 0.5 0.5 1",
+                mesh=f"{obj_name}_part_{j}",
+            )
+        # Write MJCF object file
+        object_mjcf_file_path = library_object_dir / f"{obj_name}.xml"
+        ET.indent(object_tree, space="  ")
+        object_tree.write(object_mjcf_file_path, encoding="unicode")
 
     print(f"Included {n_included} out of {n_objects} objects based on volume threshold.")
 
