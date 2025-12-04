@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional, Sequence
+from typing import Any, Dict, Iterable, List, Optional, Sequence
 
 import numpy as np
 import yaml
@@ -56,9 +56,9 @@ class TaskGenerator:
 
         base_states, goal, success_check, subgoals = self._base_plan(config.base_goal_family, config.objects)
         wrappers_applied = []
+        requested_wrappers = [wrapper.lower() for wrapper in config.wrappers]
 
-        for wrapper in config.wrappers:
-            wrapper = wrapper.lower()
+        for wrapper in requested_wrappers:
             if wrapper == "closed_receptacle":
                 addon_states = self._apply_closed_receptacle(controller, predicates, config.objects)
             elif wrapper == "out_of_reach_with_pull":
@@ -86,6 +86,8 @@ class TaskGenerator:
 
         if not self._plan_executes(world, metadata, predicates.context, base_states, goal):
             raise ValueError("Generated plan does not satisfy the goal.")
+
+        subgoals = self._augment_subgoals(subgoals, requested_wrappers, config.objects)
 
         spec = self._build_spec_dict(
             config.task_name,
@@ -119,29 +121,36 @@ class TaskGenerator:
                 offset = obj.get("handle_offset", [0.0, 0.0, 0.0])
                 world.add_site(handle, np.array(position) + np.array(offset))
 
-            if regions := obj.get("regions"):
-                metadata[name] = ObjectMetadata(
-                    name=name,
-                    type=obj.get("type"),
-                    tags=set(obj.get("tags", [])),
-                    regions=regions,
-                    articulation_joint=obj.get("joint_name"),
-                    articulation_limits=tuple(obj.get("joint_limits", [])) or None,
-                    handle_site=obj.get("handle_site"),
-                )
-            else:
-                metadata[name] = ObjectMetadata(
-                    name=name,
-                    type=obj.get("type"),
-                    tags=set(obj.get("tags", [])),
-                    articulation_joint=obj.get("joint_name"),
-                    articulation_limits=tuple(obj.get("joint_limits", [])) or None,
-                    handle_site=obj.get("handle_site"),
-                )
-        joint_name = obj.get("joint_name")
-        if joint_name is not None:
-            initial_joint = obj.get("open_target", obj.get("closed_value", 0.0))
-            world.set_joint(joint_name, initial_joint)
+            articulation = obj.get("articulation", {})
+            joint_name = articulation.get("joint")
+            limits = articulation.get("limits")
+            handle_site = articulation.get("handle_site") or obj.get("handle_site")
+            open_value = articulation.get("open")
+            closed_value = articulation.get("closed")
+
+            metadata[name] = ObjectMetadata(
+                name=name,
+                type=obj.get("type"),
+                tags=set(obj.get("tags", [])),
+                regions=obj.get("regions", {}),
+                articulation_joint=joint_name,
+                articulation_limits=tuple(limits) if limits else None,
+                articulation_open_value=open_value,
+                articulation_closed_value=closed_value,
+                handle_site=handle_site,
+            )
+
+            if joint_name is not None:
+                default_value = articulation.get("default")
+                if default_value is not None:
+                    world.set_joint(joint_name, default_value)
+                elif open_value is not None:
+                    world.set_joint(joint_name, open_value)
+                elif closed_value is not None:
+                    world.set_joint(joint_name, closed_value)
+                elif limits:
+                    world.set_joint(joint_name, limits[0])
+
         return world, metadata
 
     def _base_plan(self, base_goal_family: str, objects: List[Dict]):
@@ -149,7 +158,7 @@ class TaskGenerator:
         states = []
         goal = ""
         success_check: Dict[str, any] = {}
-        subgoals: List[str] = []
+        subgoals: List[Dict[str, Any]] = []
 
         if base_goal_family in ("putin", "put_in"):
             obj = objects[0]["name"]
@@ -167,7 +176,11 @@ class TaskGenerator:
                     {"type": "in", "object": obj, "container": container},
                 ],
             }
-            subgoals = [f"Held({obj})", goal]
+            subgoals = [
+                {"type": "reach", "object": obj},
+                {"type": "held", "object": obj},
+                {"type": "in", "object": obj, "container": container},
+            ]
         elif base_goal_family in ("grasp", "grasp_object"):
             obj = objects[0]["name"]
             states = [
@@ -175,7 +188,10 @@ class TaskGenerator:
             ]
             goal = f"Held({obj})"
             success_check = {"method": "simple", "conditions": [{"type": "held", "object": obj}]}
-            subgoals = [goal]
+            subgoals = [
+                {"type": "reach", "object": obj},
+                {"type": "held", "object": obj},
+            ]
         elif base_goal_family in ("puton", "put_on"):
             obj, support = objects[0]["name"], objects[1]["name"]
             states = [
@@ -190,7 +206,11 @@ class TaskGenerator:
                 "operator": "and",
                 "conditions": [{"type": "on", "object": obj, "support": support}],
             }
-            subgoals = [f"Held({obj})", goal]
+            subgoals = [
+                {"type": "reach", "object": obj},
+                {"type": "held", "object": obj},
+                {"type": "on", "object": obj, "support": support},
+            ]
         elif base_goal_family in ("insert", "insertion"):
             peg, hole = objects[0]["name"], objects[1]["name"]
             states = [
@@ -210,7 +230,11 @@ class TaskGenerator:
                     {"type": "inserted", "peg": peg, "hole": hole, "depth": 0.05, "angle_tol": 0.2}
                 ],
             }
-            subgoals = [f"Held({peg})", goal]
+            subgoals = [
+                {"type": "reach", "object": peg},
+                {"type": "held", "object": peg},
+                {"type": "inserted", "peg": peg, "hole": hole, "depth": 0.05, "angle_tol": 0.2},
+            ]
         else:
             raise ValueError(f"Unsupported base goal family: {base_goal_family}")
 
@@ -227,13 +251,23 @@ class TaskGenerator:
         if not receptacles:
             return []
         container = receptacles[0]
-        joint_name = container.get("joint_name", f"{container['name']}_joint")
-        controller.close_joint(joint_name=joint_name, target=container.get("closed_value", 0.0))
+        articulation = container.get("articulation", {})
+        joint_name = articulation.get("joint", f"{container['name']}_joint")
+        closed_value = articulation.get("closed")
+        if closed_value is None:
+            limits = articulation.get("limits", [0.0, 0.2])
+            closed_value = limits[0] if limits else 0.0
+        controller.close_joint(joint_name=joint_name, target=closed_value)
         predicates.context.closed_joints.add(joint_name)
+        predicates.context.open_joints.discard(joint_name)
+        open_target = articulation.get("open")
+        if open_target is None:
+            limits = articulation.get("limits", [0.0, 0.2])
+            open_target = limits[-1] if limits else closed_value + 0.2
         open_state = {
             "name": "open_container",
             "primitive": "open_joint",
-            "params": {"joint": joint_name, "target": container.get("open_target", 0.2)},
+            "params": {"joint": joint_name, "target": open_target},
         }
         return [open_state]
 
@@ -341,7 +375,7 @@ class TaskGenerator:
         goal: str,
         wrappers: List[str],
         success_check: Dict,
-        subgoals: Sequence[str],
+        subgoals: Sequence[Dict[str, Any]],
     ) -> Dict:
         return {
             "task_name": task_name,
@@ -356,6 +390,41 @@ class TaskGenerator:
             "subgoals": list(subgoals),
         }
 
+    def _augment_subgoals(
+        self,
+        subgoals: Sequence[Dict[str, Any]],
+        wrappers: List[str],
+        objects: List[Dict],
+    ) -> List[Dict[str, Any]]:
+        augmented = list(subgoals)
+        objects_by_name = {obj["name"]: obj for obj in objects}
+
+        def insert_once(entry: Dict[str, Any], *, after_type: Optional[str] = None) -> None:
+            if entry in augmented:
+                return
+            if after_type is not None:
+                for index, existing in enumerate(augmented):
+                    if existing.get("type") == after_type:
+                        augmented.insert(index + 1, entry)
+                        return
+            augmented.insert(0, entry)
+
+        if "closed_receptacle" in wrappers:
+            container = next((o["name"] for o in objects if "openable" in o.get("tags", [])), None)
+            if container:
+                insert_once({"type": "open", "object": container})
+
+        if "out_of_reach_with_pull" in wrappers and objects:
+            target_object = objects[0]["name"]
+            insert_once({"type": "reachable", "object": target_object})
+
+        if "occluded_object" in wrappers:
+            target = next((o["name"] for o in objects if "graspable" in o.get("tags", [])), None)
+            if target:
+                insert_once({"type": "clear", "support": target}, after_type="open")
+
+        return augmented
+
     def _clone_context(self, context: PredicateContext) -> PredicateContext:
         cloned = PredicateContext()
         cloned.held_objects = set(context.held_objects)
@@ -366,6 +435,7 @@ class TaskGenerator:
         cloned.blocked_pairs = set(context.blocked_pairs)
         cloned.open_joints = set(context.open_joints)
         cloned.closed_joints = set(context.closed_joints)
+        cloned.occlusion_memory = set(context.occlusion_memory)
         cloned.reach_radius = context.reach_radius
         cloned.object_radii = dict(context.object_radii)
         cloned.pull_dependencies = {k: set(v) for k, v in context.pull_dependencies.items()}

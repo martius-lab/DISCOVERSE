@@ -16,7 +16,7 @@ tests, etc.) can be swapped in during the stabilisation pass.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Dict, Iterable, Optional, Protocol, Sequence, Set, Tuple
+from typing import Any, Dict, Iterable, Optional, Protocol, Sequence, Set, Tuple
 
 import numpy as np
 from scipy.spatial.transform import Rotation
@@ -47,7 +47,17 @@ class WorldStateAdapter(Protocol):
     def get_geom_aabb(self, geom_name: str) -> Tuple[np.ndarray, np.ndarray]: ...
 
 
-class MuJoCoStateAdapter:
+class MutableWorldState(WorldStateAdapter, Protocol):
+    """Protocol extending WorldStateAdapter with mutation helpers."""
+
+    def set_body_position(self, name: str, position: Sequence[float]) -> None: ...
+
+    def translate_body(self, name: str, delta: Sequence[float]) -> None: ...
+
+    def set_joint_value(self, joint_name: str, value: float) -> None: ...
+
+
+class MuJoCoStateAdapter(MutableWorldState):
     """Adapter exposing MuJoCo model/data through the WorldStateAdapter API."""
 
     def __init__(self, mj_model, mj_data):
@@ -98,6 +108,21 @@ class MuJoCoStateAdapter:
         aabb_max = self._data.geom_xpos[geom_id] + self._model.geom_size[geom_id]
         return np.asarray(aabb_min), np.asarray(aabb_max)
 
+    # -- Mutation helpers ---------------------------------------------------
+    def set_body_position(self, name: str, position: Sequence[float]) -> None:
+        pos = np.asarray(position, dtype=float)
+        self._data.body(name).xpos[:] = pos
+
+    def translate_body(self, name: str, delta: Sequence[float]) -> None:
+        delta_vec = np.asarray(delta, dtype=float)
+        body = self._data.body(name)
+        body.xpos[:] = body.xpos + delta_vec
+
+    def set_joint_value(self, joint_name: str, value: float) -> None:
+        joint_id = self._joint_id(joint_name)
+        qpos_addr = self._model.jnt_qposadr[joint_id]
+        self._data.qpos[qpos_addr] = float(value)
+
 
 @dataclass
 class WorldObject:
@@ -119,7 +144,7 @@ class WorldSite:
 
 
 @dataclass
-class DictWorldState(WorldStateAdapter):
+class DictWorldState(MutableWorldState):
     """
     Simple in-memory adapter used in tests and in the generator spike.
 
@@ -160,8 +185,21 @@ class DictWorldState(WorldStateAdapter):
             quat=np.asarray(quat, dtype=float),
         )
 
-    def set_joint(self, joint_name: str, value: float) -> None:
+    def set_body_position(self, name: str, position: Sequence[float]) -> None:
+        if name not in self.bodies:
+            raise KeyError(f"Body '{name}' not defined in DictWorldState.")
+        self.bodies[name].position = np.asarray(position, dtype=float)
+
+    def translate_body(self, name: str, delta: Sequence[float]) -> None:
+        if name not in self.bodies:
+            raise KeyError(f"Body '{name}' not defined in DictWorldState.")
+        self.bodies[name].position = self.bodies[name].position + np.asarray(delta, dtype=float)
+
+    def set_joint_value(self, joint_name: str, value: float) -> None:
         self.joints[joint_name] = float(value)
+
+    def set_joint(self, joint_name: str, value: float) -> None:
+        self.set_joint_value(joint_name, value)
 
     def set_geom_bounds(
         self,
@@ -235,6 +273,8 @@ class ObjectMetadata:
     regions: Dict[str, Dict[str, float]] = field(default_factory=dict)
     articulation_joint: Optional[str] = None
     articulation_limits: Optional[Tuple[float, float]] = None
+    articulation_open_value: Optional[float] = None
+    articulation_closed_value: Optional[float] = None
     handle_site: Optional[str] = None
 
 
@@ -250,6 +290,7 @@ class PredicateContext:
     blocked_pairs: Set[Tuple[str, str]] = field(default_factory=set)
     open_joints: Set[str] = field(default_factory=set)
     closed_joints: Set[str] = field(default_factory=set)
+    occlusion_memory: Set[Tuple[str, str]] = field(default_factory=set)
     gripper_position: Optional[np.ndarray] = None
     gripper_site: Optional[str] = None
     reach_radius: float = 0.5
@@ -306,7 +347,15 @@ class PredicateEvaluator:
             self._context.object_radii[object_name] = radius
             return radius
         except Exception:
-            return default
+            pass
+
+        if isinstance(self._state, DictWorldState) and object_name in self._state.bodies:
+            size = self._state.bodies[object_name].geom_size
+            radius = float(np.linalg.norm(size[:2]) / 2.0)
+            self._context.object_radii[object_name] = radius
+            return radius
+
+        return default
 
     def _gripper_position(self) -> np.ndarray:
         ctx = self._context
@@ -317,6 +366,39 @@ class PredicateEvaluator:
         # Default origin near workspace.
         return np.zeros(3)
 
+    def _parse_region_identifier(self, default_owner: str, identifier: str) -> Tuple[str, str]:
+        if "." in identifier:
+            owner, region = identifier.split(".", 1)
+            return owner, region
+        return default_owner, identifier
+
+    def _get_region_definition(self, owner: str, region_name: str) -> Dict[str, Any]:
+        meta = self._objects.get(owner)
+        if not meta:
+            return {}
+        return meta.regions.get(region_name, {})
+
+    def _region_center(self, owner: str, region_name: str) -> Optional[np.ndarray]:
+        region = self._get_region_definition(owner, region_name)
+        if not region:
+            return None
+        center = self._state.get_body_position(region.get("body", owner))
+        offset = np.asarray(region.get("offset", [0.0, 0.0, 0.0]), dtype=float)
+        return center + offset
+
+    def _occludes_line(self, blocker_name: str, start: np.ndarray, target: np.ndarray) -> bool:
+        blocker_pos = self._state.get_body_position(blocker_name)
+        segment = target - start
+        length = np.linalg.norm(segment)
+        if length < 1e-6:
+            return False
+        projection = np.dot(blocker_pos - start, segment) / (length ** 2)
+        if projection <= 0.0 or projection >= 1.0:
+            return False
+        closest = start + projection * segment
+        lateral = np.linalg.norm(blocker_pos - closest)
+        return lateral <= self._get_object_radius(blocker_name) and np.linalg.norm(blocker_pos - start) < length
+
     # -- Core predicates ----------------------------------------------------
     def on(
         self,
@@ -324,7 +406,7 @@ class PredicateEvaluator:
         support_name: str,
         *,
         lateral_tolerance: float = 0.05,
-        height_tolerance: float = 0.03,
+        height_tolerance: float = 0.05,
     ) -> bool:
         obj_pos = self._state.get_body_position(object_name)
         support_pos = self._state.get_body_position(support_name)
@@ -342,16 +424,19 @@ class PredicateEvaluator:
         *,
         region_name: str = "inside",
     ) -> bool:
-        region = self._objects.get(container_name, ObjectMetadata(container_name)).regions.get(region_name)
+        owner, resolved_region = self._parse_region_identifier(container_name, region_name)
+        region = self._get_region_definition(owner, resolved_region)
         obj_pos = self._state.get_body_position(object_name)
         if not region:
             # Spherical approximation using container radius if known.
-            radius = self._get_object_radius(container_name, default=0.08)
-            center = self._state.get_body_position(container_name)
+            radius = self._get_object_radius(owner, default=0.08)
+            center = self._state.get_body_position(owner)
             return np.linalg.norm(obj_pos[:2] - center[:2]) <= radius and obj_pos[2] <= center[2] + radius
 
         region_type = region.get("type", "cylinder")
-        center = self._state.get_body_position(region.get("body", container_name))
+        center = self._state.get_body_position(region.get("body", owner))
+        offset = np.asarray(region.get("offset", [0.0, 0.0, 0.0]), dtype=float)
+        center = center + offset
         if region_type == "cylinder":
             radius = float(region.get("radius", 0.08))
             height = float(region.get("height", 0.05))
@@ -369,6 +454,19 @@ class PredicateEvaluator:
         obj_pos = self._state.get_body_position(object_name)
         target = np.asarray(target, dtype=float)
         return np.linalg.norm(obj_pos - target) <= threshold
+
+    def at(
+        self,
+        object_name: str,
+        region_identifier: str,
+        tolerance: float = 0.05,
+    ) -> bool:
+        owner, region_name = self._parse_region_identifier(object_name, region_identifier)
+        center = self._region_center(owner, region_name)
+        if center is None:
+            return self.near(object_name, self._state.get_body_position(region_identifier), threshold=tolerance)
+        obj_pos = self._state.get_body_position(object_name)
+        return np.linalg.norm(obj_pos - center) <= tolerance
 
     def aligned(
         self,
@@ -399,10 +497,16 @@ class PredicateEvaluator:
         metadata = self._objects.get(object_name)
         if metadata and metadata.articulation_joint:
             joint_value = self._state.get_joint_value(metadata.articulation_joint)
+            if metadata.articulation_open_value is not None:
+                ref = metadata.articulation_open_value
+                base = metadata.articulation_closed_value if metadata.articulation_closed_value is not None else ref
+                tolerance = max(threshold, 0.05 * abs(ref - base))
+                return joint_value >= ref - tolerance
             if metadata.articulation_limits:
-                # Consider open if within 5% of upper limit.
-                _, qmax = metadata.articulation_limits
-                return joint_value >= qmax - 0.05 * abs(qmax - _)
+                qmin, qmax = metadata.articulation_limits
+                span = abs(qmax - qmin)
+                tolerance = max(threshold, 0.05 * span)
+                return joint_value >= qmax - tolerance
             return joint_value > threshold
         # Fallback to context bookkeeping.
         return object_name in self._context.open_joints
@@ -411,9 +515,16 @@ class PredicateEvaluator:
         metadata = self._objects.get(object_name)
         if metadata and metadata.articulation_joint:
             joint_value = self._state.get_joint_value(metadata.articulation_joint)
+            if metadata.articulation_closed_value is not None:
+                ref = metadata.articulation_closed_value
+                base = metadata.articulation_open_value if metadata.articulation_open_value is not None else ref
+                tolerance = max(threshold, 0.05 * abs(base - ref))
+                return joint_value <= ref + tolerance
             if metadata.articulation_limits:
-                qmin, _ = metadata.articulation_limits
-                return joint_value <= qmin + 0.05 * abs(_ - qmin)
+                qmin, qmax = metadata.articulation_limits
+                span = abs(qmax - qmin)
+                tolerance = max(threshold, 0.05 * span)
+                return joint_value <= qmin + tolerance
             return abs(joint_value) <= threshold
         return object_name in self._context.closed_joints
 
@@ -426,7 +537,37 @@ class PredicateEvaluator:
         return np.linalg.norm(obj_pos - gripper) <= reach_radius
 
     def visible(self, object_name: str) -> bool:
-        return object_name not in self._context.invisible_objects
+        ctx = self._context
+        if object_name in ctx.invisible_objects:
+            return False
+
+        for blocker, target in ctx.blocked_pairs:
+            if target == object_name:
+                ctx.occlusion_memory.add((blocker, target))
+                return False
+
+        start = self._gripper_position()
+        target_pos = self._state.get_body_position(object_name)
+        # Remember occluder pairs that have historically blocked visibility so we
+        # can re-evaluate them even after the wrapper-induced context flags are cleared.
+        occluding_pairs: Set[Tuple[str, str]] = set(
+            pair for pair in ctx.occlusion_memory if pair[1] == object_name
+        )
+        for name, meta in self._objects.items():
+            if name == object_name or not meta:
+                continue
+            if "occluder" not in meta.tags:
+                continue
+            pair = (name, object_name)
+            if pair in ctx.blocked_pairs or pair in ctx.occlusion_memory:
+                occluding_pairs.add(pair)
+
+        for blocker, _ in list(occluding_pairs):
+            if self._occludes_line(blocker, start, target_pos):
+                ctx.occlusion_memory.add((blocker, object_name))
+                return False
+            ctx.occlusion_memory.discard((blocker, object_name))
+        return True
 
     def clear(self, support_name: str) -> bool:
         for other in self._objects.keys():

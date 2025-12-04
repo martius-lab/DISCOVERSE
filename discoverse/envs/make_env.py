@@ -226,17 +226,13 @@ def _merge_robot_and_pure_task(robot_xml_path: str, pure_task_xml_path: str) -> 
     arm_name = robot_root.get("model")
     manipulator_locate = task_root.find(".//site[@name='manipulator_locate']")
     robot_worldbody = robot_root.find("worldbody")
-    set_arm_pose = False
     if robot_worldbody is not None:
         for child in robot_worldbody:
-            print(child.tag, child.get("name"))
             if child.tag == "body" and child.get("name") == f"{arm_name}_pose":
-                set_arm_pose = True
                 for key in ["pos", "euler", "quat"]:
                     if manipulator_locate is not None and manipulator_locate.get(key):
                         child.set(key, manipulator_locate.get(key))
             new_worldbody.append(child)
-    assert set_arm_pose, "未找到机械臂位姿设置节点，请确保机械臂XML中包含正确的body名称"
     
     # 然后添加任务环境的worldbody内容（包括include元素）
     task_worldbody = task_root.find("worldbody")
@@ -248,26 +244,29 @@ def _merge_robot_and_pure_task(robot_xml_path: str, pure_task_xml_path: str) -> 
     for child in tail_inlcudes:
         merged_root.append(child)
 
-    # 添加keyframe
-    env_model = mujoco.MjModel.from_xml_path(pure_task_xml_path)
-    env_data = mujoco.MjData(env_model)
-    mujoco.mj_forward(env_model, env_data)
-    env_qpos = env_data.qpos.copy().tolist()
+    # 添加keyframe（若存在）
+    if robot_keyframe is not None:
+        env_model = mujoco.MjModel.from_xml_path(pure_task_xml_path)
+        env_data = mujoco.MjData(env_model)
+        mujoco.mj_forward(env_model, env_data)
+        env_qpos = env_data.qpos.copy().tolist()
 
-    # 只处理name为"home"的key
-    key_elem = None
-    for k in robot_keyframe.findall("key"):
-        if k.get("name") == "home":
-            key_elem = k
-            break
-    if key_elem is not None:
-        # 只保留name为"home"的key，删除其他key
-        for k in list(robot_keyframe.findall("key")):
-            if k is not key_elem:
-                robot_keyframe.remove(k)
-        robot_qpos = list(map(float, key_elem.get("qpos").split()))
-        keyframe_qpos = [x for x in (robot_qpos + env_qpos)]
-        key_elem.set("qpos", " ".join(map(str, keyframe_qpos)))
+        key_elem = None
+        for k in robot_keyframe.findall("key"):
+            if k.get("name") == "home":
+                key_elem = k
+                break
+        if key_elem is not None:
+            for k in list(robot_keyframe.findall("key")):
+                if k is not key_elem:
+                    robot_keyframe.remove(k)
+            qpos = key_elem.get("qpos", "")
+            if qpos:
+                robot_qpos = list(map(float, qpos.split()))
+            else:
+                robot_qpos = []
+            keyframe_qpos = [x for x in (robot_qpos + env_qpos)]
+            key_elem.set("qpos", " ".join(map(str, keyframe_qpos)))
         merged_root.append(robot_keyframe)
 
     return merged_root
@@ -339,6 +338,8 @@ def make_env(robot_name: str, task_name: str, output_path: Optional[str] = None)
         # print(f"环境XML已导出到: {output_path}")
     
     return env
+
+make_env.DISCOVERSE_ASSETS_DIR = DISCOVERSE_ASSETS_DIR
 
 
 def list_available_robots() -> list:

@@ -15,7 +15,7 @@ from typing import Optional, Sequence
 
 import numpy as np
 
-from .predicates import DictWorldState, PredicateContext, PredicateEvaluator
+from .predicates import MutableWorldState, PredicateEvaluator
 
 
 @dataclass
@@ -27,7 +27,7 @@ class PrimitiveResult:
 class PrimitiveController:
     """Executes symbolic primitives by mutating world state directly."""
 
-    def __init__(self, world: DictWorldState, predicates: PredicateEvaluator):
+    def __init__(self, world: MutableWorldState, predicates: PredicateEvaluator):
         self.world = world
         self.predicates = predicates
 
@@ -46,13 +46,13 @@ class PrimitiveController:
         return self.world.get_body_position(name)
 
     def _set_object_pos(self, name: str, pos: Sequence[float]) -> None:
-        self.world.bodies[name].position = np.asarray(pos, dtype=float)
+        self.world.set_body_position(name, pos)
 
     def _object_quat(self, name: str) -> np.ndarray:
         return self.world.get_body_quat(name)
 
     def _set_joint(self, joint_name: str, value: float) -> None:
-        self.world.set_joint(joint_name, value)
+        self.world.set_joint_value(joint_name, value)
 
     # ---------------------------------------------------------------- reach
     def reach(self, site_name: str, tolerance: float = 0.01) -> PrimitiveResult:

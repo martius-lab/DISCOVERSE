@@ -3,138 +3,20 @@ import time
 import shutil
 import argparse
 import traceback
-            elif primitive == "reach":
-                # TO REFACTOR: spike-stage reach updates predicate context only.
-                site_name = params.get("site") or params.get("handle_site")
-                if site_name:
-                    target_pos = self.mj_data.site(site_name).xpos.copy()
-                    if getattr(self.task, "predicate_context", None):
-                        self.task.predicate_context.gripper_position = target_pos
-                return True
-            elif primitive == "lift":
-                # TO REFACTOR: placeholder lift updates held object's Z directly.
-                obj_name = params.get("object") or params.get("object_name")
-                height = params.get("height", 0.05)
-                if obj_name and getattr(self.task, "predicates", None):
-                    try:
-                        current = self.mj_data.body(obj_name).xpos.copy()
-                        current[2] += height
-                        self.mj_data.body(obj_name).xpos[:] = current
-                    except Exception:
-                        pass
-                return True
-            elif primitive == "place_on":
-                obj_name = params.get("object") or params.get("object_name")
-                support = params.get("support") or params.get("support_name")
-                if obj_name and support and getattr(self.task, "predicates", None):
-                    support_pos = self.mj_data.body(support).xpos.copy()
-                    support_pos[2] += 0.02
-                    try:
-                        self.mj_data.body(obj_name).xpos[:] = support_pos
-                    except Exception:
-                        pass
-                    self.task.predicate_context.held_objects.discard(obj_name)
-                return True
-            elif primitive == "place_in":
-                obj_name = params.get("object") or params.get("object_name")
-                container = params.get("container") or params.get("container_name")
-                if obj_name and container and getattr(self.task, "predicates", None):
-                    container_pos = self.mj_data.body(container).xpos.copy()
-                    container_pos[2] += params.get("height", 0.02)
-                    try:
-                        self.mj_data.body(obj_name).xpos[:] = container_pos
-                    except Exception:
-                        pass
-                    self.task.predicate_context.held_objects.discard(obj_name)
-                return True
-            elif primitive == "push":
-                obj_name = params.get("object") or params.get("object_name")
-                direction = np.asarray(params.get("direction", [1.0, 0.0, 0.0]), dtype=float)
-                distance = params.get("distance", 0.1)
-                if obj_name:
-                    direction = direction / (np.linalg.norm(direction) + 1e-8)
-                    shift = direction * distance
-                    try:
-                        self.mj_data.body(obj_name).xpos[:] += shift
-                    except Exception:
-                        pass
-                return True
-            elif primitive == "pull":
-                obj_name = params.get("object") or params.get("object_name")
-                direction = np.asarray(params.get("direction", [-1.0, 0.0, 0.0]), dtype=float)
-                distance = params.get("distance", 0.1)
-                if obj_name:
-                    direction = direction / (np.linalg.norm(direction) + 1e-8)
-                    shift = direction * (-abs(distance))
-                    try:
-                        self.mj_data.body(obj_name).xpos[:] += shift
-                    except Exception:
-                        pass
-                return True
-            elif primitive == "open_joint":
-                joint_name = params.get("joint") or params.get("joint_name")
-                target = params.get("target", 0.2)
-                if joint_name:
-                    try:
-                        joint_id = mujoco.mj_name2id(self.mj_model, mujoco.mjtObj.mjOBJ_JOINT, joint_name)
-                        qaddr = self.mj_model.jnt_qposadr[joint_id]
-                        self.mj_data.qpos[qaddr] = target
-                        if getattr(self.task, "predicate_context", None):
-                            self.task.predicate_context.open_joints.add(joint_name)
-                            self.task.predicate_context.closed_joints.discard(joint_name)
-                    except Exception:
-                        pass
-                return True
-            elif primitive == "close_joint":
-                joint_name = params.get("joint") or params.get("joint_name")
-                target = params.get("target", 0.0)
-                if joint_name:
-                    try:
-                        joint_id = mujoco.mj_name2id(self.mj_model, mujoco.mjtObj.mjOBJ_JOINT, joint_name)
-                        qaddr = self.mj_model.jnt_qposadr[joint_id]
-                        self.mj_data.qpos[qaddr] = target
-                        if getattr(self.task, "predicate_context", None):
-                            self.task.predicate_context.closed_joints.add(joint_name)
-                            self.task.predicate_context.open_joints.discard(joint_name)
-                    except Exception:
-                        pass
-                return True
-            elif primitive == "insert":
-                peg = params.get("peg") or params.get("object")
-                hole = params.get("hole") or params.get("target")
-                depth = params.get("depth", 0.02)
-                if peg and hole and getattr(self.task, "predicates", None):
-                    try:
-                        peg_pos = self.mj_data.body(peg).xpos.copy()
-                        hole_pos = self.mj_data.body(hole).xpos.copy()
-                        peg_pos[:2] = hole_pos[:2]
-                        peg_pos[2] = hole_pos[2] - depth
-                        self.mj_data.body(peg).xpos[:] = peg_pos
-                    except Exception:
-                        pass
-                return True
-            elif primitive == "unblock":
-                blocker = params.get("blocker")
-                distance = params.get("distance", 0.2)
-                if blocker:
-                    try:
-                        self.mj_data.body(blocker).xpos[0] += distance
-                        if getattr(self.task, "predicate_context", None):
-                            target = params.get("target")
-                            self.task.predicate_context.blocked_pairs.discard((blocker, target))
-                    except Exception:
-                        pass
-                return True
+
 import mink
 import mujoco
 import numpy as np
 from scipy.spatial.transform import Rotation
+from typing import Optional
 
 import discoverse
 from discoverse.envs import make_env
 from discoverse import DISCOVERSE_ROOT_DIR, DISCOVERSE_ASSETS_DIR
 
 from discoverse.universal_manipulation import UniversalTaskBase, PyavImageEncoder, recoder_single_arm
+from discoverse.universal_manipulation.primitives import PrimitiveController
+from discoverse.universal_manipulation.reward import RewardShaper, ShapingConfig
 
 from discoverse.utils import (
     SimpleStateMachine, step_func, get_body_tmat
@@ -145,6 +27,11 @@ class UniversalRuntimeTaskExecutor:
     
     集成了utils模块、简化的错误处理、模板化配置支持
     """
+
+    _PRIMITIVE_ALIASES = {
+        "grasp_object": "grasp",
+        "release_object": "release",
+    }
 
     def __init__(self, task: UniversalTaskBase, viewer, mj_model: mujoco.MjModel, 
                  mj_data: mujoco.MjData, robot_name: str, sync: bool = False):
@@ -202,6 +89,18 @@ class UniversalRuntimeTaskExecutor:
 
         self.camera_encoders = {}
 
+        self.reward_shaper = None
+        self.last_shaped_reward = 0.0
+        self.shaped_rewards = []
+        self._maybe_create_reward_shaper()
+
+        self.primitive_controller = None
+        if getattr(self.task, "predicates", None) is not None:
+            try:
+                self.primitive_controller = PrimitiveController(self.task.predicates.state, self.task.predicates)
+            except AttributeError:
+                self.primitive_controller = None
+
         # self.reset(random=False)
         self.reset()
 
@@ -248,13 +147,143 @@ class UniversalRuntimeTaskExecutor:
         self.renderer._rect.width = width
         self.renderer._rect.height = height
 
+    def _maybe_create_reward_shaper(self):
+        subgoals = getattr(self.task.task_config, "subgoals", None)
+        if not subgoals:
+            return
+        shaping_configs = []
+        for entry in subgoals:
+            if isinstance(entry, dict):
+                try:
+                    shaping_configs.append(ShapingConfig(**entry))
+                except TypeError:
+                    continue
+        if shaping_configs:
+            self.reward_shaper = RewardShaper(self.task.predicates, shaping_configs)
+            self.last_shaped_reward = 0.0
+            self.shaped_rewards = []
+
+    def _update_reward_shaping(self, dt: float):
+        if self.reward_shaper is None:
+            return
+        shaped = self.reward_shaper.step(dt)
+        self.last_shaped_reward = shaped
+        self.shaped_rewards.append(shaped)
+
+    def _normalise_primitive_name(self, primitive: str) -> str:
+        name = str(primitive).lower()
+        return self._PRIMITIVE_ALIASES.get(name, name)
+
+    def _handle_symbolic_primitive(self, primitive: str, params: dict) -> Optional[bool]:
+        if self.primitive_controller is None:
+            return None
+
+        primitive = self._normalise_primitive_name(primitive)
+        controller = self.primitive_controller
+        try:
+            if primitive == "reach":
+                site = params.get("site") or params.get("handle_site") or params.get("site_name")
+                if site is None:
+                    return False
+                result = controller.reach(site_name=site, tolerance=params.get("tolerance", 0.02))
+                return result.success
+            if primitive == "grasp":
+                target = params.get("object") or params.get("object_name")
+                if target is None:
+                    return False
+                result = controller.grasp(object=target)
+                return result.success
+            if primitive == "release":
+                target = params.get("object") or params.get("object_name")
+                result = controller.release(object=target)
+                return result.success
+            if primitive == "lift":
+                target = params.get("object") or params.get("object_name")
+                if target is None:
+                    return False
+                result = controller.lift(object=target, height=params.get("height", 0.05))
+                return result.success
+            if primitive == "place_on":
+                target = params.get("object") or params.get("object_name")
+                support = params.get("support") or params.get("support_name")
+                if target is None or support is None:
+                    return False
+                result = controller.place_on(object=target, support=support)
+                return result.success
+            if primitive == "place_in":
+                target = params.get("object") or params.get("object_name")
+                container = params.get("container") or params.get("container_name")
+                if target is None or container is None:
+                    return False
+                height_offset = params.get("height")
+                if height_offset is None:
+                    height_offset = params.get("height_offset", 0.02)
+                result = controller.place_in(
+                    object=target,
+                    container=container,
+                    height_offset=height_offset,
+                )
+                return result.success
+            if primitive == "push":
+                target = params.get("object") or params.get("object_name")
+                if target is None:
+                    return False
+                result = controller.push(
+                    object=target,
+                    direction=params.get("direction", (1.0, 0.0, 0.0)),
+                    distance=params.get("distance", 0.1),
+                )
+                return result.success
+            if primitive == "pull":
+                target = params.get("object") or params.get("object_name")
+                if target is None:
+                    return False
+                result = controller.pull(
+                    object=target,
+                    direction=params.get("direction", (-1.0, 0.0, 0.0)),
+                    distance=params.get("distance", 0.1),
+                )
+                return result.success
+            if primitive == "open_joint":
+                joint = params.get("joint") or params.get("joint_name")
+                if joint is None:
+                    return False
+                result = controller.open_joint(joint_name=joint, target=params.get("target", 0.2))
+                return result.success
+            if primitive == "close_joint":
+                joint = params.get("joint") or params.get("joint_name")
+                if joint is None:
+                    return False
+                result = controller.close_joint(joint_name=joint, target=params.get("target", 0.0))
+                return result.success
+            if primitive == "insert":
+                peg = params.get("peg") or params.get("object") or params.get("peg_name")
+                hole = params.get("hole") or params.get("target") or params.get("hole_name")
+                if peg is None or hole is None:
+                    return False
+                depth = params.get("depth", 0.02)
+                angle_tol = params.get("angle_tol", 0.35)
+                result = controller.insert(peg=peg, hole=hole, depth=depth, angle_tol=angle_tol)
+                return result.success
+            if primitive == "unblock":
+                blocker = params.get("blocker")
+                target = params.get("target")
+                if blocker is None or target is None:
+                    return False
+                result = controller.unblock(blocker=blocker, target=target, distance=params.get("distance", 0.2))
+                return result.success
+        except Exception:
+            return False
+        return None
+
     def set_target_from_primitive(self, state_config):
         """使用原语设置目标控制信号"""
         try:
-            primitive = state_config["primitive"]
+            primitive = self._normalise_primitive_name(state_config["primitive"])
             params = state_config.get("params", {})
             gripper_state = state_config.get("gripper_state", "open")
             
+            success: Optional[bool] = True
             if primitive == "move_to_object":
                 # 使用原语计算目标位置
                 object_name = params.get("object_name", "")
@@ -283,7 +312,7 @@ class UniversalRuntimeTaskExecutor:
                         self.target_control[:self.n_arm_joints] = solution[:self.n_arm_joints]
                         self.set_mocap_target("target", target_pos, Rotation.from_matrix(target_rmat).as_quat()[[3,0,1,2]])
                     else:
-                        return False
+                        success = False
                         
             elif primitive == "move_relative":
                 offset = np.array(params.get("offset", [0, 0, 0]))
@@ -305,8 +334,17 @@ class UniversalRuntimeTaskExecutor:
                     self.target_control[:self.n_arm_joints] = solution[:self.n_arm_joints]
                     self.set_mocap_target("target", target_pos, Rotation.from_matrix(target_rmat).as_quat()[[3,0,1,2]])
                 else:
-                    return False
-           
+                    success = False
+            else:
+                handled = self._handle_symbolic_primitive(primitive, params)
+                if handled is False:
+                    success = False
+                elif handled is None:
+                    success = False
+
+            if not success:
+                return False
+
             if gripper_state == "open":
                 self.target_control[self.gripper_ctrl_idx] = self.task.robot_interface.gripper_controller.open()
             elif gripper_state == "close":
@@ -374,6 +412,8 @@ class UniversalRuntimeTaskExecutor:
             
             for _ in range(decimation):
                 mujoco.mj_step(self.mj_model, self.mj_data)
+
+            self._update_reward_shaping(self.mj_model.opt.timestep * decimation)
 
             return True
 
@@ -521,6 +561,11 @@ class UniversalRuntimeTaskExecutor:
                     self.save_dir, 
                     cam_name
                 )
+
+        if self.reward_shaper:
+            self.reward_shaper.reset()
+            self.last_shaped_reward = 0.0
+            self.shaped_rewards = []
 
 def generate_robot_task_model(robot_name, task_name):
     """生成指定机械臂的任务模型"""

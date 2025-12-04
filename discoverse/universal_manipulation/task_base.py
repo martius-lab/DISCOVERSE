@@ -180,11 +180,15 @@ class UniversalTaskBase:
             elif condition_type == 'height':
                 return self._check_height_condition(condition)
             elif condition_type == 'on' and self.predicates:
+                on_kwargs = {}
+                if condition.get('lateral_tolerance') is not None:
+                    on_kwargs['lateral_tolerance'] = condition.get('lateral_tolerance')
+                if condition.get('height_tolerance') is not None:
+                    on_kwargs['height_tolerance'] = condition.get('height_tolerance')
                 return self.predicates.on(
                     condition.get('object'),
                     condition.get('support'),
-                    lateral_tolerance=condition.get('lateral_tolerance', 0.05),
-                    height_tolerance=condition.get('height_tolerance', 0.03),
+                    **on_kwargs,
                 )
             elif condition_type == 'in' and self.predicates:
                 region = condition.get('region', 'inside')
@@ -220,6 +224,14 @@ class UniversalTaskBase:
                     depth=condition.get('depth', 0.02),
                     angle_tol=condition.get('angle_tol', 0.1),
                 )
+            elif condition_type == 'at' and self.predicates:
+                return self.predicates.at(
+                    condition.get('object'),
+                    condition.get('region'),
+                    tolerance=condition.get('tolerance', 0.05),
+                )
+            elif condition_type == 'visible' and self.predicates:
+                return self.predicates.visible(condition.get('object'))
             else:
                 print(f"警告：未知的条件类型: {condition_type}")
                 return False

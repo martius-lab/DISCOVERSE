@@ -1,6 +1,7 @@
 import numpy as np
 
 from discoverse.universal_manipulation.primitives import PrimitiveController
+from examples.universal_tasks.universal_task_runtime import UniversalRuntimeTaskExecutor
 
 
 def test_reach_updates_gripper_position(primitive_controller):
@@ -90,3 +91,15 @@ def test_unblock_clears_blockers(primitive_controller):
     predicates.context.blocked_pairs.add(("blocker", "block"))
     controller.unblock(blocker="blocker", target="block", distance=0.2)
     assert ("blocker", "block") not in predicates.context.blocked_pairs
+
+
+def test_runtime_handles_legacy_names(primitive_controller):
+    controller, predicates = primitive_controller
+    executor = object.__new__(UniversalRuntimeTaskExecutor)
+    executor.primitive_controller = controller
+
+    assert executor._handle_symbolic_primitive("grasp_object", {"object": "block"})
+    assert predicates.held("block")
+
+    assert executor._handle_symbolic_primitive("release_object", {"object": "block"})
+    assert not predicates.held("block")
