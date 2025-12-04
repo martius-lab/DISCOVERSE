@@ -118,7 +118,6 @@ class SO101_IK:
         Returns:
             Tuple[Joint positions, Converged boolean]
         """
-        print("Solving IK...")
         # Update current configuration
         tmp_q = self.configuration.data.qpos.copy()
         tmp_q[:len(current_qpos)] = current_qpos[:]
