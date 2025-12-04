@@ -49,7 +49,41 @@
                 <geom type="mesh" class="visual" pos="0.0077 0.0001 -0.0234" quat="0.707107 -0.707107 1.66015e-15 6.45094e-15" mesh="sts3215_03a_v1" material="sts3215_03a_v1_material"/>
                 <geom type="mesh" class="collision" pos="0.0077 0.0001 -0.0234" quat="0.707107 -0.707107 1.66015e-15 6.45094e-15" mesh="sts3215_03a_v1" material="sts3215_03a_v1_material"/>
                 <geom type="mesh" class="visual" pos="8.32667e-17 -0.000218214 0.000949706" quat="0 1 0 0" mesh="wrist_roll_follower_so101_v1" material="wrist_roll_follower_so101_v1_material"/>
-                <geom type="mesh" class="collision" pos="8.32667e-17 -0.000218214 0.000949706" quat="0 1 0 0" mesh="wrist_roll_follower_so101_v1" material="wrist_roll_follower_so101_v1_material"/>
+                <geom type="mesh" class="collision" pos="8.32667e-17 -0.000218214 0.000949706" quat="0 1 0 0" mesh="wrist_roll_follower_so101_v1_part1_decomp_0" material="wrist_roll_follower_so101_v1_material"/>
+                <geom type="mesh" class="collision" pos="8.32667e-17 -0.000218214 0.000949706" quat="0 1 0 0" mesh="wrist_roll_follower_so101_v1_part1_decomp_1" material="wrist_roll_follower_so101_v1_material"/>
+                <geom type="mesh" class="collision" pos="8.32667e-17 -0.000218214 0.000949706" quat="0 1 0 0" mesh="wrist_roll_follower_so101_v1_part1_decomp_2" material="wrist_roll_follower_so101_v1_material"/>
+                <geom type="mesh" class="collision" pos="8.32667e-17 -0.000218214 0.000949706" quat="0 1 0 0" mesh="wrist_roll_follower_so101_v1_part1_decomp_3" material="wrist_roll_follower_so101_v1_material"/>
+                <geom type="mesh" class="collision" pos="8.32667e-17 -0.000218214 0.000949706" quat="0 1 0 0" mesh="wrist_roll_follower_so101_v1_part1_decomp_4" material="wrist_roll_follower_so101_v1_material"/>
+                <geom type="mesh" class="collision" pos="8.32667e-17 -0.000218214 0.000949706" quat="0 1 0 0" mesh="wrist_roll_follower_so101_v1_part1_decomp_5" material="wrist_roll_follower_so101_v1_material"/>
+                <geom type="mesh" class="collision" pos="8.32667e-17 -0.000218214 0.000949706" quat="0 1 0 0" mesh="wrist_roll_follower_so101_v1_part1_decomp_6" material="wrist_roll_follower_so101_v1_material"/>
+                <geom type="mesh" class="collision" pos="8.32667e-17 -0.000218214 0.000949706" quat="0 1 0 0" mesh="wrist_roll_follower_so101_v1_part1_decomp_7" material="wrist_roll_follower_so101_v1_material"/>
+                <geom type="mesh" class="collision" pos="8.32667e-17 -0.000218214 0.000949706" quat="0 1 0 0" mesh="wrist_roll_follower_so101_v1_part1_decomp_8" material="wrist_roll_follower_so101_v1_material"/>
+                <geom type="mesh" class="collision" pos="8.32667e-17 -0.000218214 0.000949706" quat="0 1 0 0" mesh="wrist_roll_follower_so101_v1_part2_decomp_0" material="wrist_roll_follower_so101_v1_material"/>
+                <geom type="mesh" class="collision" pos="8.32667e-17 -0.000218214 0.000949706" quat="0 1 0 0" mesh="wrist_roll_follower_so101_v1_part2_decomp_10" material="wrist_roll_follower_so101_v1_material"/>
+                <geom type="mesh" class="collision" pos="8.32667e-17 -0.000218214 0.000949706" quat="0 1 0 0" mesh="wrist_roll_follower_so101_v1_part2_decomp_11" material="wrist_roll_follower_so101_v1_material"/>
+                <geom type="mesh" class="collision" pos="8.32667e-17 -0.000218214 0.000949706" quat="0 1 0 0" mesh="wrist_roll_follower_so101_v1_part2_decomp_12" material="wrist_roll_follower_so101_v1_material"/>
+                <geom type="mesh" class="collision" pos="8.32667e-17 -0.000218214 0.000949706" quat="0 1 0 0" mesh="wrist_roll_follower_so101_v1_part2_decomp_13" material="wrist_roll_follower_so101_v1_material"/>
+                <geom type="mesh" class="collision" pos="8.32667e-17 -0.000218214 0.000949706" quat="0 1 0 0" mesh="wrist_roll_follower_so101_v1_part2_decomp_14" material="wrist_roll_follower_so101_v1_material"/>
+                <geom type="mesh" class="collision" pos="8.32667e-17 -0.000218214 0.000949706" quat="0 1 0 0" mesh="wrist_roll_follower_so101_v1_part2_decomp_15" material="wrist_roll_follower_so101_v1_material"/>
+                <geom type="mesh" class="collision" pos="8.32667e-17 -0.000218214 0.000949706" quat="0 1 0 0" mesh="wrist_roll_follower_so101_v1_part2_decomp_16" material="wrist_roll_follower_so101_v1_material"/>
+                <geom type="mesh" class="collision" pos="8.32667e-17 -0.000218214 0.000949706" quat="0 1 0 0" mesh="wrist_roll_follower_so101_v1_part2_decomp_17" material="wrist_roll_follower_so101_v1_material"/>
+                <geom type="mesh" class="collision" pos="8.32667e-17 -0.000218214 0.000949706" quat="0 1 0 0" mesh="wrist_roll_follower_so101_v1_part2_decomp_18" material="wrist_roll_follower_so101_v1_material"/>
+                <geom type="mesh" class="collision" pos="8.32667e-17 -0.000218214 0.000949706" quat="0 1 0 0" mesh="wrist_roll_follower_so101_v1_part2_decomp_19" material="wrist_roll_follower_so101_v1_material"/>
+                <geom type="mesh" class="collision" pos="8.32667e-17 -0.000218214 0.000949706" quat="0 1 0 0" mesh="wrist_roll_follower_so101_v1_part2_decomp_1" material="wrist_roll_follower_so101_v1_material"/>
+                <geom type="mesh" class="collision" pos="8.32667e-17 -0.000218214 0.000949706" quat="0 1 0 0" mesh="wrist_roll_follower_so101_v1_part2_decomp_20" material="wrist_roll_follower_so101_v1_material"/>
+                <geom type="mesh" class="collision" pos="8.32667e-17 -0.000218214 0.000949706" quat="0 1 0 0" mesh="wrist_roll_follower_so101_v1_part2_decomp_21" material="wrist_roll_follower_so101_v1_material"/>
+                <geom type="mesh" class="collision" pos="8.32667e-17 -0.000218214 0.000949706" quat="0 1 0 0" mesh="wrist_roll_follower_so101_v1_part2_decomp_22" material="wrist_roll_follower_so101_v1_material"/>
+                <geom type="mesh" class="collision" pos="8.32667e-17 -0.000218214 0.000949706" quat="0 1 0 0" mesh="wrist_roll_follower_so101_v1_part2_decomp_23" material="wrist_roll_follower_so101_v1_material"/>
+                <geom type="mesh" class="collision" pos="8.32667e-17 -0.000218214 0.000949706" quat="0 1 0 0" mesh="wrist_roll_follower_so101_v1_part2_decomp_24" material="wrist_roll_follower_so101_v1_material"/>
+                <geom type="mesh" class="collision" pos="8.32667e-17 -0.000218214 0.000949706" quat="0 1 0 0" mesh="wrist_roll_follower_so101_v1_part2_decomp_25" material="wrist_roll_follower_so101_v1_material"/>
+                <geom type="mesh" class="collision" pos="8.32667e-17 -0.000218214 0.000949706" quat="0 1 0 0" mesh="wrist_roll_follower_so101_v1_part2_decomp_2" material="wrist_roll_follower_so101_v1_material"/>
+                <geom type="mesh" class="collision" pos="8.32667e-17 -0.000218214 0.000949706" quat="0 1 0 0" mesh="wrist_roll_follower_so101_v1_part2_decomp_3" material="wrist_roll_follower_so101_v1_material"/>
+                <geom type="mesh" class="collision" pos="8.32667e-17 -0.000218214 0.000949706" quat="0 1 0 0" mesh="wrist_roll_follower_so101_v1_part2_decomp_4" material="wrist_roll_follower_so101_v1_material"/>
+                <geom type="mesh" class="collision" pos="8.32667e-17 -0.000218214 0.000949706" quat="0 1 0 0" mesh="wrist_roll_follower_so101_v1_part2_decomp_5" material="wrist_roll_follower_so101_v1_material"/>
+                <geom type="mesh" class="collision" pos="8.32667e-17 -0.000218214 0.000949706" quat="0 1 0 0" mesh="wrist_roll_follower_so101_v1_part2_decomp_6" material="wrist_roll_follower_so101_v1_material"/>
+                <geom type="mesh" class="collision" pos="8.32667e-17 -0.000218214 0.000949706" quat="0 1 0 0" mesh="wrist_roll_follower_so101_v1_part2_decomp_7" material="wrist_roll_follower_so101_v1_material"/>
+                <geom type="mesh" class="collision" pos="8.32667e-17 -0.000218214 0.000949706" quat="0 1 0 0" mesh="wrist_roll_follower_so101_v1_part2_decomp_8" material="wrist_roll_follower_so101_v1_material"/>
+                <geom type="mesh" class="collision" pos="8.32667e-17 -0.000218214 0.000949706" quat="0 1 0 0" mesh="wrist_roll_follower_so101_v1_part2_decomp_9" material="wrist_roll_follower_so101_v1_material"/>
                 <site group="3" name="gripperframe" pos="-0.0079 -0.000218121 -0.0981274" quat="0.707107 -0 0.707107 -2.37788e-17"/>
                 <site group="3" name="endpoint" pos="-0.0079 -0.000218121 -0.0981274" quat="0.707107 -0 0.707107 -2.37788e-17"/>
                 <body pos="0 0.05 -0.03" quat="1 0 0 0">
