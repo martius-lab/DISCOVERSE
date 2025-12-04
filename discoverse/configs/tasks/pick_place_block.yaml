@@ -1,0 +1,146 @@
+# Simple Pick and Place Task Configuration
+# This is a simpler example task for demonstration
+
+task_name: "pick_place_block"
+robot_name: "so101"
+description: "Pick up a block and place it on a target location"
+
+# List of objects in the scene
+objects:
+  - "block_red"
+  - "plate_white"
+
+# Robot configuration
+robot_config:
+  # Gaussian Splatting models
+  gs_models:
+    background: "scene/lab3/point_cloud.ply"
+    block_red: "object/block_red.ply"
+    plate_white: "object/plate_white.ply"
+  
+  # Initial joint positions
+  init_qpos: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+  
+  
+  simulation:
+    timestep: 0.004166667
+    decimation: 4
+    sync: true
+    headless: false
+  
+  rendering:
+    fps: 20
+    width: 640
+    height: 480
+  
+  camera_ids: [0, 1]
+  save_mjb_and_task_config: true
+
+# Domain randomization
+randomization:
+  object_positions:
+    - object: "block_red"
+      position_range:
+        x: 0.08
+        y: 0.08
+    
+    - object: "plate_white"
+      position_range:
+        x: 0.05
+        y: 0.05
+  
+  table_height: true
+  table_config:
+    table_name: "table"
+    affected_objects:
+      - "block_red"
+      - "plate_white"
+  
+  materials:
+    - "block_texture"
+    - "plate_texture"
+  
+  lighting: true
+  light_config:
+    direction: true
+    color: true
+    active: true
+
+# Action sequence
+action_sequence:
+  # Approach block from above
+  - type: "move_to_object"
+    params:
+      object: "block_red"
+      offset: [0, 0, 0.15]
+      rotation:
+        euler: [0, 180, 0]
+        seq: "xyz"
+        degrees: true
+      gripper: 0.8
+  
+  # Lower to block
+  - type: "move_to_object"
+    params:
+      object: "block_red"
+      offset: [0, 0, 0.05]
+      rotation:
+        euler: [0, 180, 0]
+        seq: "xyz"
+        degrees: true
+  
+  # Grasp block
+  - type: "grasp"
+    params:
+      position: 0.0
+  
+  # Wait for stable grasp
+  - type: "delay"
+    params:
+      duration: 0.3
+  
+  # Lift block
+  - type: "offset_current"
+    params:
+      offset: [0, 0, 0.15]
+  
+  # Move to target plate
+  - type: "move_to_object"
+    params:
+      object: "plate_white"
+      offset: [0, 0, 0.15]
+      rotation:
+        euler: [0, 180, 0]
+        seq: "xyz"
+        degrees: true
+  
+  # Lower to plate
+  - type: "move_to_object"
+    params:
+      object: "plate_white"
+      offset: [0, 0, 0.08]
+      rotation:
+        euler: [0, 180, 0]
+        seq: "xyz"
+        degrees: true
+  
+  # Release block
+  - type: "release"
+    params:
+      position: 0.8
+  
+  # Retreat
+  - type: "offset_current"
+    params:
+      offset: [0, 0, 0.1]
+
+# Success conditions
+success_conditions:
+  position_conditions:
+    - type: "object_near_object"
+      object1: "block_red"
+      object2: "plate_white"
+      threshold: 0.05
+
+max_time: 15.0
+move_speed: 0.75
