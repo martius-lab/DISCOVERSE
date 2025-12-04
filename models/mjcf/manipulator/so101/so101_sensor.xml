@@ -24,6 +24,9 @@
     <framepos name="ee_pos" objtype="site" objname="gripperframe"/>
     <framequat name="ee_quat" objtype="site" objname="gripperframe"/>
     <framelinvel name="ee_vel" objtype="site" objname="gripperframe"/>
+    <framepos name="endpoint_pos" objtype="site" objname="endpoint" reftype="site" refname="armbase"/>
+    <framequat name="endpoint_quat" objtype="site" objname="endpoint" reftype="site" refname="armbase"/>
+    <framelinvel name="endpoint_vel" objtype="site" objname="endpoint" reftype="site" refname="armbase"/>
     <gyro name="ee_gyro" site="gripperframe"/>
     <accelerometer name="ee_acc" site="gripperframe"/>
 
