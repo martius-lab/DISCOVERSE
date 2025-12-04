@@ -7,7 +7,7 @@ Each primitive can use get_body_tmat to trace object poses with optional offsets
 
 import numpy as np
 from scipy.spatial.transform import Rotation
-from discoverse.utils import get_body_tmat
+from discoverse.utils import get_body_tmat, get_site_tmat
 
 
 class MotionPrimitive:
@@ -113,7 +113,7 @@ class MoveToPositionPrimitive(MotionPrimitive):
         gripper = self.params.get('gripper', None)
         
         if relative:
-            current_tmat = get_body_tmat(sim_node.mj_data, "gripper_base") 
+            current_tmat = get_site_tmat(sim_node.mj_data, "endpoint") 
             position = current_tmat[:3, 3] + position
         
         tmat_target = np.eye(4)
@@ -198,7 +198,7 @@ class OffsetCurrentPosePrimitive(MotionPrimitive):
         gripper = self.params.get('gripper', None)
         
         # Get current end-effector pose
-        current_tmat = get_body_tmat(sim_node.mj_data, "gripper")
+        current_tmat = get_site_tmat(sim_node.mj_data, "endpoint") 
         
         # Apply offset in world frame
         target_tmat = current_tmat.copy()

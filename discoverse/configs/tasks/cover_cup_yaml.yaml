@@ -103,7 +103,7 @@ action_sequence:
         euler: [0, 72, 0]  # pitch 72 degrees (0.4*pi radians)
         seq: "xyz"
         degrees: true
-      gripper: 0.04
+      gripper: 0.8
   
   # Step 1: Move to cup handle
   - type: "track_object_offset"
@@ -158,7 +158,7 @@ action_sequence:
   # Step 8: Release cup
   - type: "release"
     params:
-      position: 0.04
+      position: 0.8
   
   # Step 9: Lift up
   - type: "offset_current"
@@ -174,7 +174,7 @@ action_sequence:
         euler: [0, 90, 0]
         seq: "xyz"
         degrees: true
-      gripper: 0.04
+      gripper: 0.8
   
   # Step 11: Lower to lid
   - type: "offset_current"
@@ -214,7 +214,7 @@ action_sequence:
   # Step 17: Release lid
   - type: "release"
     params:
-      position: 0.04
+      position: 0.8
   
   # Step 18: Move away
   - type: "offset_current"

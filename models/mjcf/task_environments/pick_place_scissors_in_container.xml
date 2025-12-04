@@ -1,0 +1,19 @@
+<mujoco model="pick_place_scissors_in_container">
+  <include file="../object/library_objects/Ecoforms_Plant_Container_QP_Turquoise_dependencies.xml"/>
+  <include file="../object/library_objects/Diamond_Visions_Scissors_Red_dependencies.xml"/>
+  <compiler angle="radian" meshdir="../../meshes/" texturedir="../../meshes/"/>
+  <worldbody>
+    <site name="manipulator_locate" pos="0.3 1. 0.71" euler="0 0 3.1416"/>
+    <body name="Diamond_Visions_Scissors_Red" pos="0.0 0.92 0.715">
+      <joint type="free" frictionloss="0.00001"/>
+      <inertial pos="0 0 0" mass="0.01" diaginertia="1e-6 1e-6 1e-6"/>
+      <geom type="mesh" mesh="Diamond_Visions_Scissors_Red" condim="4" solimp="2 1 0.01" solref="0.01 1" friction="0.8 0.01 0.001" rgba="0.85 0.1 0.12 1" pos="0 0 0" material="Diamond_Visions_Scissors_Red_material"/>
+      <include file="../object/library_objects/Diamond_Visions_Scissors_Red.xml"/>
+    </body>
+    <body name="Ecoforms_Plant_Container_QP_Turquoise" pos="0.09 0.84 0.710">
+      <joint type="free" frictionloss="0.00005"/>
+      <include file="../object/library_objects/Ecoforms_Plant_Container_QP_Turquoise.xml"/>
+    </body>
+  </worldbody>
+  <include file="../scene/qz_lab3.xml"/>
+</mujoco>

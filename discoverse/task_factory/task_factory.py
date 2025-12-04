@@ -482,6 +482,7 @@ def run_yaml_task(yaml_path, data_idx=0, data_set_size=1, auto=False, headless=F
     stm = SimpleStateMachine()
     stm.max_state_cnt = len(factory.motion_primitives) - 1
     max_time = factory.config.get('max_time', 20.0)
+    primitive_timeout = factory.config.get('primitive_timeout', 4.0)  # Default 4 second timeout per primitive
     
     # Initialize action array with robot's joint count (nj)
     action = np.zeros(sim_node.nj)
@@ -490,6 +491,7 @@ def run_yaml_task(yaml_path, data_idx=0, data_set_size=1, auto=False, headless=F
     data_end_idx = data_idx + data_set_size
     
     sim_node.reset()
+    primitive_start_time = 0.0
     while sim_node.running:
         if sim_node.reset_sig:
             sim_node.reset_sig = False
@@ -502,15 +504,24 @@ def run_yaml_task(yaml_path, data_idx=0, data_set_size=1, auto=False, headless=F
                 cam_id: EncoderClass(cfg.render_set["width"], cfg.render_set["height"], save_path, cam_id) 
                 for cam_id in cfg.obs_rgb_cam_id
             }
+            primitive_start_time = sim_node.mj_data.time
         
         try:
             if stm.trigger():
                 execute_state(stm)
+                primitive_start_time = sim_node.mj_data.time  # Reset timer when new primitive starts
             else:
                 stm.update()
             
+            # Check for primitive timeout
+            if sim_node.mj_data.time - primitive_start_time > primitive_timeout:
+                print(f"Primitive {stm.state_idx} timed out after {primitive_timeout}s, moving to next state")
+                stm.next()
+                primitive_start_time = sim_node.mj_data.time
+            
             if sim_node.checkActionDone():
                 stm.next()
+                primitive_start_time = sim_node.mj_data.time  # Reset timer when moving to next primitive
         
         except ValueError as ve:
             print(f"IK error: {ve}")
@@ -528,12 +539,15 @@ def run_yaml_task(yaml_path, data_idx=0, data_set_size=1, auto=False, headless=F
         obs, _, _, _, _ = sim_node.step(action)
         
         # Record data
-        if len(obs_lst) < sim_node.mj_data.time * cfg.render_set["fps"]:
-            imgs = obs.pop("img")
-            for cam_id, img in imgs.items():
-                encoders[cam_id].encode(img, obs["time"])
-            act_lst.append(action.tolist().copy())
-            obs_lst.append(obs)
+        try:
+            if len(obs_lst) < sim_node.mj_data.time * cfg.render_set["fps"]:
+                imgs = obs.pop("img")
+                for cam_id, img in imgs.items():
+                    encoders[cam_id].encode(img, obs["time"])
+                act_lst.append(action.tolist().copy())
+                obs_lst.append(obs)
+        except Exception as ex:
+                    print(f"cam_id: {cam_id}{str(ex)}")
         
         # Check completion
         if stm.state_idx >= stm.max_state_cnt:

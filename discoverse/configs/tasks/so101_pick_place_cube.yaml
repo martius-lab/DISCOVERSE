@@ -136,7 +136,7 @@ action_sequence:
   # Step 7: Release cube
   - type: "release"
     params:
-      position: 0.04
+      position: 0.8
   
   # Step 8: Retreat
   - type: "offset_current"
