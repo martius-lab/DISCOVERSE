@@ -25,7 +25,7 @@ classifiers = [
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.8",
     "Programming Language :: Python :: 3.9",
-    "Programming Language :: Python :: 3.10", 
+    "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
@@ -35,7 +35,7 @@ classifiers = [
 # 核心依赖 - 基础仿真功能
 dependencies = [
     "numpy>=1.20.0",
-    "scipy>=1.7.0", 
+    "scipy>=1.7.0",
     "opencv-python>=4.6.0",
     "mujoco>=3.2.0",
     "psutil>=5.8.0",
@@ -43,6 +43,11 @@ dependencies = [
     "screeninfo",
     "mediapy",
     "tqdm",
+    "lerobot[feetech]>=0.4.2",
+    "mink>=0.0.13",
+    "plyfile>=1.1.3",
+    "qpsolvers[quadprog]>=4.8.2",
+    "huggingface-hub>=0.35.3",
 ]
 
 [project.optional-dependencies]
@@ -55,7 +60,7 @@ lidar = [
 # 3D Gaussian Splatting渲染模块
 gaussian-rendering = [
     "torch>=2.0.0",
-    "torchvision>=0.14.0", 
+    "torchvision>=0.14.0",
     "plyfile",
     "PyGlm",
 ]
@@ -162,7 +167,7 @@ dev = [
 # 完整安装 - 包含所有功能模块（除了dev）
 full = [
     "discoverse[lidar]",
-    "discoverse[gaussian-rendering]", 
+    "discoverse[gaussian-rendering]",
     "discoverse[xml-editor]",
     "discoverse[act]",
     "discoverse[diffusion-policy]",
@@ -177,7 +182,7 @@ full = [
 # 机器学习相关依赖组合
 ml = [
     "discoverse[act]",
-    "discoverse[diffusion-policy]", 
+    "discoverse[diffusion-policy]",
     "discoverse[rdt]",
     "discoverse[data-collection]",
     "discoverse[visualization]",
@@ -186,19 +191,19 @@ ml = [
 act_full = [
     "discoverse[act]",
     "discoverse[data-collection]",
-    "discoverse[visualization]",    
+    "discoverse[visualization]",
 ]
 
 dp_full = [
-    "discoverse[diffusion-policy]", 
+    "discoverse[diffusion-policy]",
     "discoverse[data-collection]",
-    "discoverse[visualization]",    
+    "discoverse[visualization]",
 ]
 
 rdt_full = [
     "discoverse[rdt]",
     "discoverse[data-collection]",
-    "discoverse[visualization]",    
+    "discoverse[visualization]",
 ]
 
 # 硬件集成相关依赖组合
@@ -236,7 +241,7 @@ extend-exclude = '''
 )/
 '''
 
-[tool.isort] 
+[tool.isort]
 profile = "black"
 skip_gitignore = true
 extend_skip = ["submodules", "policies"]
@@ -246,7 +251,7 @@ testpaths = ["tests"]
 python_files = "test_*.py"
 python_classes = "Test*"
 python_functions = "test_*"
-addopts = "--verbose --tb=short" 
+addopts = "--verbose --tb=short"
 
 [tool.uv.workspace]
 members = [

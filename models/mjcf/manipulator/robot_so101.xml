@@ -1,0 +1,29 @@
+<mujoco model="so101">
+  <option impratio="1" cone="elliptic" noslip_iterations="3">
+    <flag multiccd="enable"/>
+  </option>
+  <compiler angle="radian" meshdir="../../meshes/" texturedir="../../meshes/" autolimits="true"/>
+
+  <include file="../scene/skybox.xml"/>
+  <include file="so101/so101_dependencies.xml"/>
+  <!-- <include file="so101/so101_appendix.xml"/> -->
+
+  <worldbody>
+    <body name="so101_pose" pos="0 0 0.78" >
+      <include file="so101/so101.xml"/>
+    </body>
+  </worldbody>
+
+  <actuator>
+    <include file="so101/so101_control.xml"/>
+  </actuator>
+
+  <sensor>
+    <include file="so101/so101_sensor.xml"/>
+  </sensor>
+
+  <keyframe>
+    <key name="home" qpos='0 0 0 0 0 0' ctrl='0 0 0 0 0 0'/>
+  </keyframe>
+
+</mujoco>

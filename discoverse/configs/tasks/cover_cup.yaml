@@ -5,7 +5,7 @@ task_name: "cover_cup"
 description: "将咖啡杯移到盘子上，然后用杯盖盖住"
 
 observation:
-  fps : 30        # 帧率
+  fps : 20        # 帧率
   cameras:
     - name: "eye_side" # 侧视相机
       fovy: 60        # 视场角 (degrees)

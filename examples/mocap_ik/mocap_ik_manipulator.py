@@ -269,6 +269,8 @@ class Manipulator:
             arm_dof = 7
         elif "xarm7" in mjcf_path:
             arm_dof = 7
+        elif "so101" in mjcf_path:
+            arm_dof = 5
         else:
             raise ValueError(f"Unsupported robot: {self.robot_name}")
         return arm_dof
@@ -552,7 +554,7 @@ def parse_args():
         type=str,
         default=None,
         help="输入机器人模型名称",
-        choices=["airbot_play", "airbot_play_force", "arx_l5", "arx_x5", "iiwa14", "panda", "piper", "rm65", "ur5e", "xarm7"],
+        choices=["airbot_play", "airbot_play_force", "arx_l5", "arx_x5", "iiwa14", "panda", "piper", "rm65", "ur5e", "xarm7", "so101"],
     )
     parser.add_argument(
         "-t", "--task",

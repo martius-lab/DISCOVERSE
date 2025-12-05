@@ -32,9 +32,9 @@ class SimNode(MMK2TaskBase):
         distance = np.linalg.norm(v1 - v2)
         # print(distance)
         return distance < 0.03
-    
+
 cfg = MMK2Cfg()
-cfg.use_gaussian_renderer = True
+cfg.use_gaussian_renderer = False
 cfg.gs_model_dict["kiwi"]        = "object/kiwi.ply"
 cfg.gs_model_dict["wood"]        = "object/wood.ply"
 cfg.gs_model_dict["flower_bowl"] = "object/flower_bowl.ply"
@@ -65,6 +65,7 @@ if __name__ == "__main__":
     parser.add_argument("--data_set_size", type=int, default=1, help="data set size")
     parser.add_argument("--auto", action="store_true", help="auto run")
     parser.add_argument('--use_gs', action='store_true', help='Use gaussian splatting renderer')
+    parser.add_argument('--render', action='store_true', help='Render observations after simulation (runs record_playback.py)')
     args = parser.parse_args()
 
     data_idx, data_set_size = args.data_idx, args.data_idx + args.data_set_size
@@ -80,7 +81,7 @@ if __name__ == "__main__":
     sim_node = SimNode(cfg)
     if hasattr(cfg, "save_mjb_and_task_config") and cfg.save_mjb_and_task_config:
         mujoco.mj_saveModel(sim_node.mj_model, os.path.join(save_dir, os.path.basename(cfg.mjcf_file_path).replace(".xml", ".mjb")))
-        copypy2(os.path.abspath(__file__), os.path.join(save_dir, os.path.basename(__file__)))
+        copypy2(os.path.abspath(__file__), os.path.join(save_dir, os.path.basename(__file__)), save_dir)
 
     stm = SimpleStateMachine()
     stm.max_state_cnt = 19
@@ -97,7 +98,7 @@ if __name__ == "__main__":
             sim_node.reset_sig = False
             stm.reset()
             action[:] = sim_node.target_control[:]
-            act_lst, obs_lst = [], []
+            act_lst, obs_lst, state_lst = [], [], []
 
         try:
             if stm.trigger():
@@ -123,7 +124,7 @@ if __name__ == "__main__":
                     tmat_plate = get_body_tmat(sim_node.mj_data, "wood")
                     target_posi = tmat_plate[:3, 3] + np.array([0.0, 0.045, 0.16])
                     sim_node.lft_arm_target_pose[:] = sim_node.get_tmat_wrt_mmk2base(target_posi)
-                    sim_node.setArmEndTarget(sim_node.lft_arm_target_pose, sim_node.arm_action, "l", sim_node.sensor_lft_arm_qpos, Rotation.from_euler('zyx', [ 0., -0.0551, 0.]).as_matrix())                    
+                    sim_node.setArmEndTarget(sim_node.lft_arm_target_pose, sim_node.arm_action, "l", sim_node.sensor_lft_arm_qpos, Rotation.from_euler('zyx', [ 0., -0.0551, 0.]).as_matrix())
                 elif stm.state_idx == 6: # 下降高度
                     sim_node.tctr_slide[0] = 0.2
                 elif stm.state_idx == 7: # 松开碗壁 放下碗
@@ -135,7 +136,7 @@ if __name__ == "__main__":
                     target_posi = tmat_plate[:3, 3] + np.array([0.2, 0.03, 0.16])
                     sim_node.lft_arm_target_pose[:] = sim_node.get_tmat_wrt_mmk2base(target_posi)
                     sim_node.setArmEndTarget(sim_node.lft_arm_target_pose, sim_node.arm_action, "l", sim_node.sensor_lft_arm_qpos, Rotation.from_euler('zyx', [ 0., -0.0551, 0.]).as_matrix())
-                
+
                 elif stm.state_idx == 10: # 伸到枣上
                     tmat_kiwi = get_body_tmat(sim_node.mj_data, "kiwi")
                     target_posi = tmat_kiwi[:3, 3] + 0.05 * tmat_kiwi[:3, 0] + 0.15 * tmat_kiwi[:3, 2]
@@ -147,7 +148,7 @@ if __name__ == "__main__":
                     target_posi = tmat_kiwi[:3, 3] + 0.05 * tmat_kiwi[:3, 0] + 0.12 * tmat_kiwi[:3, 2]
                     sim_node.rgt_arm_target_pose[:] = sim_node.get_tmat_wrt_mmk2base(target_posi)
                     sim_node.setArmEndTarget(sim_node.rgt_arm_target_pose, sim_node.arm_action, "r", sim_node.sensor_rgt_arm_qpos, Rotation.from_euler('zyx', [ 0., -0.0551, 0.]).as_matrix())
-                    sim_node.tctr_rgt_gripper[:] = 1 
+                    sim_node.tctr_rgt_gripper[:] = 1
                 elif stm.state_idx == 12: # 降高度
                     sim_node.tctr_head[1] = -0.8
                     sim_node.tctr_slide[0] = 0.17
@@ -170,7 +171,7 @@ if __name__ == "__main__":
                 elif stm.state_idx == 18: # 升高度
                     sim_node.tctr_head[1] = -0.8
                     sim_node.tctr_slide[0] = 0.1
-                
+
                 dif = np.abs(action - sim_node.target_control)
                 sim_node.joint_move_ratio = dif / (np.max(dif) + 1e-6)
                 sim_node.joint_move_ratio[2] *= 0.5
@@ -194,15 +195,16 @@ if __name__ == "__main__":
         # action[1] = -10 * yaw
 
         obs, _, _, _, _ = sim_node.step(action)
-        
+
         if len(obs_lst) < sim_node.mj_data.time * cfg.render_set["fps"]:
             act_lst.append(action.tolist().copy())
             obs_lst.append(obs)
+            state_lst.append(sim_node.get_mujoco_state())
 
         if stm.state_idx >= stm.max_state_cnt:
             if sim_node.check_success():
                 save_path = os.path.join(save_dir, "{:03d}".format(data_idx))
-                process = mp.Process(target=recoder_mmk2, args=(save_path, act_lst, obs_lst, cfg))
+                process = mp.Process(target=recoder_mmk2, args=(save_path, act_lst, obs_lst, cfg, state_lst, True))
                 process.start()
                 process_list.append(process)
 
@@ -217,3 +219,25 @@ if __name__ == "__main__":
 
     for p in process_list:
         p.join()
+
+    # If --render flag is provided, run record_playback.py to render observations
+    if args.render:
+        print("\n" + "="*60)
+        print("Rendering observations from recorded states...")
+        print("="*60)
+        import subprocess
+        playback_script = os.path.join(save_dir, "record_playback.py")
+        if os.path.exists(playback_script):
+            # Run playback script for all trajectories
+            result = subprocess.run(
+                ["python", playback_script, "--all"],
+                cwd=save_dir
+            )
+            if result.returncode == 0:
+                print("\n" + "="*60)
+                print("Observation rendering complete!")
+                print("="*60)
+            else:
+                print(f"\nWarning: Playback script exited with code {result.returncode}")
+        else:
+            print(f"Warning: Playback script not found at {playback_script}")

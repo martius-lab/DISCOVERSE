@@ -1,0 +1,128 @@
+# Pick and Place Pikachu Task Configuration
+# The SO101 robot will pick up the Pokemon Yellow Special Pikachu Edition Game and drop it on a nearby location.
+
+task_name: "pick_place_pikachu"
+robot_name: "so101"
+description: "SO101 picks up the Pokemon Yellow Special Pikachu Edition Game and drops it on a nearby spot."
+
+objects:
+  - "Pokémon_Yellow_Special_Pikachu_Edition_Nintendo_Game_Boy_Color"
+
+robot_config:
+  gs_models:
+    background: "scene/lab3/point_cloud.ply"
+    Pokémon_Yellow_Special_Pikachu_Edition_Nintendo_Game_Boy_Color: "object/Pokémon_Yellow_Special_Pikachu_Edition_Nintendo_Game_Boy_Color.ply"
+
+  # Initial joint positions for so101 (6 joints: 5 arm + 1 gripper)
+  init_qpos: [0.0, -0.6, 0.85, 1.15, -0.9, 0.0]
+
+  simulation:
+    timestep: 0.001
+    decimation: 4
+    sync: true
+    headless: false
+
+  rendering:
+    fps: 20
+    width: 640
+    height: 480
+
+  camera_ids: [0]
+
+  save_mjb_and_task_config: true
+
+randomization:
+  object_positions:
+    - object: "Pokémon_Yellow_Special_Pikachu_Edition_Nintendo_Game_Boy_Color"
+      position_range:
+        x: 0.06
+        y: 0.06
+        z: 0.01
+
+  table_height: true
+
+  table_config:
+    table_name: "table"
+    affected_objects:
+      - "Pokémon_Yellow_Special_Pikachu_Edition_Nintendo_Game_Boy_Color"
+
+  materials:
+    - "Pokémon_Yellow_Special_Pikachu_Edition_Nintendo_Game_Boy_Color_material"
+
+  lighting: true
+  light_config:
+    direction: true
+    color: true
+    active: true
+
+action_sequence:
+  # Step 0: Move gripper above Pikachu
+  - type: "move_to_object"
+    params:
+      object: "Pokémon_Yellow_Special_Pikachu_Edition_Nintendo_Game_Boy_Color"
+      offset: [0, 0, 0.11]
+      rotation:
+        euler: [0, 180, 0]
+        seq: "xyz"
+        degrees: true
+      gripper: 0.8
+
+  # Step 1: Lower to grasp height
+  - type: "move_to_object"
+    params:
+      object: "Pokémon_Yellow_Special_Pikachu_Edition_Nintendo_Game_Boy_Color"
+      offset: [0, 0, 0.03]
+      rotation:
+        euler: [0, 180, 0]
+        seq: "xyz"
+        degrees: true
+
+  # Step 2: Grasp
+  - type: "grasp"
+    params:
+      object: "Pokémon_Yellow_Special_Pikachu_Edition_Nintendo_Game_Boy_Color"
+      position: 0.0
+
+  # Step 3: Stabilize
+  - type: "delay"
+    params:
+      duration: 0.2
+
+  # Step 4: Lift up
+  - type: "offset_current"
+    params:
+      offset: [0, 0, 0.12]
+
+  # Step 5: Move above drop location (+X direction)
+  - type: "offset_current"
+    params:
+      offset: [0.12, 0.0, 0.0]
+
+  # Step 6: Lower for drop
+  - type: "offset_current"
+    params:
+      offset: [0, 0, -0.09]
+
+  # Step 7: Release gripper
+  - type: "release"
+    params:
+      position: 0.8
+
+  # Step 8: Retreat upward
+  - type: "offset_current"
+    params:
+      offset: [0, 0, 0.1]
+
+success_conditions:
+  position_conditions:
+    - type: "planar_distance"
+      object1: "Pokémon_Yellow_Special_Pikachu_Edition_Nintendo_Game_Boy_Color"
+      object2: "Pokémon_Yellow_Special_Pikachu_Edition_Nintendo_Game_Boy_Color"
+      axes: "xy"
+      threshold: 0.13
+
+  custom_conditions:
+    - expression: "get_body_tmat(mj_data, 'Pokémon_Yellow_Special_Pikachu_Edition_Nintendo_Game_Boy_Color')[0,3] > 0.08"
+
+max_time: 15.0
+move_speed: 0.65

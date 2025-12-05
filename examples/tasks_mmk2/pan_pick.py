@@ -89,6 +89,7 @@ if __name__ == "__main__":
     parser.add_argument("--data_set_size", type=int, default=1, help="data set size")
     parser.add_argument("--auto", action="store_true", help="auto run")
     parser.add_argument('--use_gs', action='store_true', help='Use gaussian splatting renderer')
+    parser.add_argument('--render', action='store_true', help='Render observations after simulation (runs record_playback.py)')
     args = parser.parse_args()
 
     data_idx, data_set_size = args.data_idx, args.data_idx + args.data_set_size
@@ -104,7 +105,7 @@ if __name__ == "__main__":
     sim_node = SimNode(cfg)
     if hasattr(cfg, "save_mjb_and_task_config") and cfg.save_mjb_and_task_config:
         mujoco.mj_saveModel(sim_node.mj_model, os.path.join(save_dir, os.path.basename(cfg.mjcf_file_path).replace(".xml", ".mjb")))
-        copypy2(os.path.abspath(__file__), os.path.join(save_dir, os.path.basename(__file__)))
+        copypy2(os.path.abspath(__file__), os.path.join(save_dir, os.path.basename(__file__)), save_dir)
 
     stm = SimpleStateMachine()
     stm.max_state_cnt = 13
@@ -120,7 +121,7 @@ if __name__ == "__main__":
             sim_node.reset_sig = False
             stm.reset()
             action[:] = sim_node.target_control[:]
-            act_lst, obs_lst = [], []
+            act_lst, obs_lst, state_lst = [], [], []
 
         try:
             if stm.trigger():
@@ -247,11 +248,12 @@ if __name__ == "__main__":
         if len(obs_lst) < sim_node.mj_data.time * cfg.render_set["fps"]:
             act_lst.append(action.tolist().copy())
             obs_lst.append(obs)
+            state_lst.append(sim_node.get_mujoco_state())
 
         if stm.state_idx >= stm.max_state_cnt:
             if sim_node.check_success():
                 save_path = os.path.join(save_dir, "{:03d}".format(data_idx))
-                process = mp.Process(target=recoder_mmk2, args=(save_path, act_lst, obs_lst, cfg))
+                process = mp.Process(target=recoder_mmk2, args=(save_path, act_lst, obs_lst, cfg, state_lst, True))
                 process.start()
                 process_list.append(process)
 
@@ -266,3 +268,25 @@ if __name__ == "__main__":
 
     for p in process_list:
         p.join()
+
+    # If --render flag is provided, run record_playback.py to render observations
+    if args.render:
+        print("\n" + "="*60)
+        print("Rendering observations from recorded states...")
+        print("="*60)
+        import subprocess
+        playback_script = os.path.join(save_dir, "record_playback.py")
+        if os.path.exists(playback_script):
+            # Run playback script for all trajectories
+            result = subprocess.run(
+                ["python", playback_script, "--all"],
+                cwd=save_dir
+            )
+            if result.returncode == 0:
+                print("\n" + "="*60)
+                print("Observation rendering complete!")
+                print("="*60)
+            else:
+                print(f"\nWarning: Playback script exited with code {result.returncode}")
+        else:
+            print(f"Warning: Playback script not found at {playback_script}")

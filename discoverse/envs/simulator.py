@@ -45,6 +45,7 @@ class SimulatorBase:
     obs = None
     img_rgb_obs_s = {}
     img_depth_obs_s = {}
+    img_seg_obs_s = {}
     free_body_qpos_ids = {}
 
     cam_id = -1  # -1表示自由视角
@@ -99,8 +100,8 @@ class SimulatorBase:
             self.config.use_gaussian_renderer = self.config.use_gaussian_renderer and DISCOVERSE_GAUSSIAN_RENDERER
             if self.config.use_gaussian_renderer:
                 self.gs_renderer = GSRenderer(
-                    self.config.gs_model_dict, 
-                    self.config.render_set["width"], 
+                    self.config.gs_model_dict,
+                    self.config.render_set["width"],
                     self.config.render_set["height"],
                     hf_repo_id=getattr(self.config, 'hf_repo_id', 'tatp/DISCOVERSE-models'),
                     local_dir=getattr(self.config, 'hf_local_dir', None)
@@ -114,16 +115,16 @@ class SimulatorBase:
 
         self.window = None
         self.glfw_initialized = False
-        
+
         if not hasattr(self.config.render_set, "window_title"):
             self.config.render_set["window_title"] = "DISCOVERSE"
-        
+
         if self.config.enable_render and not self.config.headless:
             try:
                 if not glfw.init():
                     raise RuntimeError("无法初始化GLFW")
                 self.glfw_initialized = True
-                
+
                 # 设置OpenGL版本和窗口属性
                 glfw.window_hint(glfw.CONTEXT_VERSION_MAJOR, 2)
                 glfw.window_hint(glfw.CONTEXT_VERSION_MINOR, 1)
@@ -146,11 +147,11 @@ class SimulatorBase:
                     self.config.render_set.get("window_title", "DISCOVERSE"),
                     None, None
                 )
-                
+
                 if not self.window:
                     glfw.terminate()
                     raise RuntimeError("无法创建GLFW窗口")
-                
+
                 glfw.make_context_current(self.window)
                 glfw.swap_interval(1)
 
@@ -161,13 +162,13 @@ class SimulatorBase:
                 gl.glClearColor(0.0, 0.0, 0.0, 1.0)
                 gl.glShadeModel(gl.GL_SMOOTH)
                 gl.glPixelStorei(gl.GL_UNPACK_ALIGNMENT, 1)
-                
+
                 # 设置回调
                 glfw.set_key_callback(self.window, self.on_key)
                 glfw.set_cursor_pos_callback(self.window, self.on_mouse_move)
                 glfw.set_mouse_button_callback(self.window, self.on_mouse_button)
                 glfw.set_scroll_callback(self.window, self.on_mouse_scroll)
-                
+
                 # 如果设置了use_default_window_size，添加窗口大小变化回调
                 if self.use_default_window_size:
                     glfw.set_window_maximize_callback(self.window, self.maximize_callback)
@@ -217,12 +218,37 @@ class SimulatorBase:
             return self.mj_data.qpos[qid:qid+7][...]
         except KeyError:
             raise KeyError(f"Body name '{body_name}' not found in free_body_qpos_ids. Available bodies: {list(self.free_body_qpos_ids.keys())}")
-    
+
     def get_joint_position(self, joint_name):
         return self.mj_data.qpos[self.mj_model.joint(joint_name).qposadr]
-    
+
     def set_joint_position(self, joint_name, value):
         self.mj_data.qpos[self.mj_model.joint(joint_name).qposadr] = value
+
+    def get_mujoco_state(self):
+        """
+        Get complete MuJoCo state for recording/playback.
+        Returns state dict that can be restored with set_mujoco_state.
+        """
+        return {
+            "time": self.mj_data.time,
+            "qpos": self.mj_data.qpos.copy(),
+            "qvel": self.mj_data.qvel.copy(),
+            "act": self.mj_data.act.copy() if self.mj_data.act.size > 0 else None,
+            "ctrl": self.mj_data.ctrl.copy(),
+        }
+
+    def set_mujoco_state(self, state):
+        """
+        Restore MuJoCo state from state dict.
+        """
+        self.mj_data.time = state["time"]
+        self.mj_data.qpos[:] = state["qpos"]
+        self.mj_data.qvel[:] = state["qvel"]
+        if state["act"] is not None and self.mj_data.act.size > 0:
+            self.mj_data.act[:] = state["act"]
+        self.mj_data.ctrl[:] = state["ctrl"]
+        mujoco.mj_forward(self.mj_model, self.mj_data)
 
     def load_mjcf(self):
         if self.mjcf_file.endswith(".xml"):
@@ -245,7 +271,7 @@ class SimulatorBase:
                     assert -2 < cam_id < len(self.camera_names), "Invalid obs_rgb_cam_id {}".format(cam_id)
             elif self.config.obs_rgb_cam_id is None:
                 self.config.obs_rgb_cam_id = []
-            
+
             if type(self.config.obs_depth_cam_id) is int:
                 assert -2 < self.config.obs_depth_cam_id < len(self.camera_names), "Invalid obs_depth_cam_id {}".format(self.config.obs_depth_cam_id)
             elif type(self.config.obs_depth_cam_id) is list:
@@ -253,7 +279,19 @@ class SimulatorBase:
                     assert -2 < cam_id < len(self.camera_names), "Invalid obs_depth_cam_id {}".format(cam_id)
             elif self.config.obs_depth_cam_id is None:
                 self.config.obs_depth_cam_id = []
-        
+
+            if not hasattr(self.config, "obs_seg_cam_id"):
+                self.config.obs_seg_cam_id = []
+            elif type(self.config.obs_seg_cam_id) is int:
+                assert -2 < self.config.obs_seg_cam_id < len(self.camera_names), "Invalid obs_seg_cam_id {}".format(self.config.obs_seg_cam_id)
+                tmp_id = self.config.obs_seg_cam_id
+                self.config.obs_seg_cam_id = [tmp_id]
+            elif type(self.config.obs_seg_cam_id) is list:
+                for cam_id in self.config.obs_seg_cam_id:
+                    assert -2 < cam_id < len(self.camera_names), "Invalid obs_seg_cam_id {}".format(cam_id)
+            elif self.config.obs_seg_cam_id is None:
+                self.config.obs_seg_cam_id = []
+
             try:
                 import screeninfo
                 monitors = screeninfo.get_monitors()
@@ -300,14 +338,14 @@ class SimulatorBase:
         except Exception as e:
             print(f"Texture '{texture_name}' not found: {e}")
             return False
-        
+
         if not no_render:
             self.renderer.update_scene(self.mj_data, self.free_camera, self.options)
             self.renderer.render()
-        
+
         tex_bind_id = self.renderer._mjr_context.texture[tex_id]
         gl.glBindTexture(gl.GL_TEXTURE_2D, tex_bind_id)
-        
+
         try:
             width = gl.glGetTexLevelParameteriv(gl.GL_TEXTURE_2D, 0, gl.GL_TEXTURE_WIDTH)
             height = gl.glGetTexLevelParameteriv(gl.GL_TEXTURE_2D, 0, gl.GL_TEXTURE_HEIGHT)
@@ -322,7 +360,7 @@ class SimulatorBase:
 
             if mtl_img_pil.size != (width, height):
                 mtl_img_pil = mtl_img_pil.resize((width, height), Image.Resampling.LANCZOS)
-            
+
             mtl_img = np.array(mtl_img_pil)
             mtl_img = np.flipud(mtl_img)
             mtl_img = np.ascontiguousarray(mtl_img, dtype=np.uint8)
@@ -332,15 +370,15 @@ class SimulatorBase:
             gl.glTexParameteri(gl.GL_TEXTURE_2D, gl.GL_TEXTURE_WRAP_S, gl.GL_REPEAT)
             gl.glTexParameteri(gl.GL_TEXTURE_2D, gl.GL_TEXTURE_WRAP_T, gl.GL_REPEAT)
 
-            gl.glTexSubImage2D(gl.GL_TEXTURE_2D, 0, 0, 0, width, height, 
+            gl.glTexSubImage2D(gl.GL_TEXTURE_2D, 0, 0, 0, width, height,
                               gl.GL_RGB, gl.GL_UNSIGNED_BYTE, mtl_img.tobytes())
-            
+
         except Exception as e:
             print(f"Error processing image for texture '{texture_name}': {e}")
             return False
         finally:
             gl.glBindTexture(gl.GL_TEXTURE_2D, 0)
-            
+
         return True
 
     def render(self):
@@ -349,19 +387,23 @@ class SimulatorBase:
         self.update_renderer_window_size(self.config.render_set["width"], self.config.render_set["height"])
         if self.config.use_gaussian_renderer and self.show_gaussian_img:
             self.update_gs_scene()
-        
+
         depth_rendering = self.renderer._depth_rendering
         self.renderer.disable_depth_rendering()
         for id in self.config.obs_rgb_cam_id:
             img = self.getRgbImg(id)
             self.img_rgb_obs_s[id] = img
-        
+
         self.renderer.enable_depth_rendering()
         for id in self.config.obs_depth_cam_id:
             img = self.getDepthImg(id)
             self.img_depth_obs_s[id] = img
         self.renderer._depth_rendering = depth_rendering
-        
+
+        for id in self.config.obs_seg_cam_id:
+            img = self.getSegMask(id)
+            self.img_seg_obs_s[id] = img
+
         if not self.config.headless and self.window is not None:
             current_width_s_, current_height_s_ = glfw.get_framebuffer_size(self.window)
             current_width, current_height = int(current_width_s_/self.screen_scale), int(current_height_s_/self.screen_scale)
@@ -377,7 +419,7 @@ class SimulatorBase:
                         img_depth = self.img_depth_obs_s[self.cam_id]
                     else:
                         img_depth = self.getDepthImg(self.cam_id)
-                    
+
                     if img_depth is not None:
                         img_vis = cv2.applyColorMap(cv2.convertScaleAbs(img_depth, alpha=255./self.config.max_render_depth), cv2.COLORMAP_JET)
                     else:
@@ -394,7 +436,7 @@ class SimulatorBase:
                 if glfw.window_should_close(self.window):
                     self.running = False
                     return
-                    
+
                 glfw.make_context_current(self.window)
                 gl.glClear(gl.GL_COLOR_BUFFER_BIT)
 
@@ -402,17 +444,17 @@ class SimulatorBase:
                     img_vis = img_vis[::-1]
                     img_vis = np.ascontiguousarray(img_vis)
                     gl.glDrawPixels(img_vis.shape[1], img_vis.shape[0], gl.GL_RGB, gl.GL_UNSIGNED_BYTE, img_vis.tobytes())
-                
+
                 glfw.swap_buffers(self.window)
                 glfw.poll_events()
-                
+
                 if self.config.sync:
                     current_time = time.time()
                     wait_time = max(1.0/self.render_fps - (current_time - self.last_render_time), 0)
                     if wait_time > 0:
                         time.sleep(wait_time)
                     self.last_render_time = time.time()
-                    
+
             except Exception as e:
                 print(f"渲染错误: {e}")
 
@@ -428,7 +470,9 @@ class SimulatorBase:
             self.gs_renderer.set_camera_pose(trans, quat_wxyz[[1,2,3,0]])
             return self.gs_renderer.render()
         else:
-            if cam_id == -1:
+            if isinstance(cam_id, mujoco.MjvCamera):
+                self.renderer.update_scene(self.mj_data, cam_id, self.options)
+            elif cam_id == -1:
                 self.renderer.update_scene(self.mj_data, self.free_camera, self.options)
             elif cam_id > -1:
                 self.renderer.update_scene(self.mj_data, self.camera_names[cam_id], self.options)
@@ -453,7 +497,9 @@ class SimulatorBase:
             self.gs_renderer.set_camera_pose(trans, quat_wxyz[[1,2,3,0]])
             return self.gs_renderer.render(render_depth=True)
         else:
-            if cam_id == -1:
+            if isinstance(cam_id, mujoco.MjvCamera):
+                self.renderer.update_scene(self.mj_data, cam_id, self.options)
+            elif cam_id == -1:
                 self.renderer.update_scene(self.mj_data, self.free_camera, self.options)
             elif cam_id > -1:
                 self.renderer.update_scene(self.mj_data, self.camera_names[cam_id], self.options)
@@ -461,6 +507,25 @@ class SimulatorBase:
                 return None
             depth_img = self.renderer.render()
             return depth_img
+
+    def getSegMask(self, cam_id):
+        # returns H, W, 2
+        # where [:, :, 0] is object id mask, [:, :, 1] is geom id mask
+        if isinstance(cam_id, mujoco.MjvCamera):
+            self.renderer.update_scene(self.mj_data, cam_id, self.options)
+        elif cam_id == -1:
+            self.renderer.update_scene(self.mj_data, self.free_camera, self.options)
+        elif cam_id > -1:
+            self.renderer.update_scene(self.mj_data, self.camera_names[cam_id], self.options)
+        else:
+            return None
+
+        self.renderer.enable_segmentation_rendering()
+        try:
+            seg = self.renderer.render()
+        finally:
+            self.renderer.disable_segmentation_rendering()
+        return seg
 
     def getPointCloud(self, cam_id, N_gap=5):
         """ please call after get_observation """
@@ -505,7 +570,7 @@ class SimulatorBase:
             dx = xpos - self.mouse_pos['x']
             dy = ypos - self.mouse_pos['y']
             height = self.config.render_set["height"]
-            
+
             action = None
             if self.mouse_pressed['left']:
                 action = mujoco.mjtMouse.mjMOUSE_ROTATE_V
@@ -523,7 +588,7 @@ class SimulatorBase:
 
     def on_mouse_button(self, window, button, action, mods):
         is_pressed = action == glfw.PRESS
-        
+
         if button == glfw.MOUSE_BUTTON_LEFT:
             self.mouse_pressed['left'] = is_pressed
         elif button == glfw.MOUSE_BUTTON_RIGHT:
@@ -539,7 +604,7 @@ class SimulatorBase:
     def on_key(self, window, key, scancode, action, mods):
         if action == glfw.PRESS:
             is_ctrl_pressed = (mods & glfw.MOD_CONTROL)
-            
+
             if is_ctrl_pressed:
                 if key == glfw.KEY_G:  # Ctrl + G
                     if self.config.use_gaussian_renderer:
@@ -656,7 +721,7 @@ class SimulatorBase:
                 except Exception:
                     pass
                 self.window = None
-            
+
             # 最后终止GLFW
             if hasattr(self, 'glfw_initialized') and self.glfw_initialized:
                 try:
@@ -664,7 +729,7 @@ class SimulatorBase:
                 except Exception:
                     pass
                 self.glfw_initialized = False
-            
+
         except Exception:
             pass
 
@@ -691,7 +756,7 @@ class SimulatorBase:
 
     @abstractmethod
     def checkTerminated(self):
-        raise NotImplementedError("checkTerminated is not implemented")    
+        raise NotImplementedError("checkTerminated is not implemented")
 
     @abstractmethod
     def getObservation(self):
@@ -704,7 +769,7 @@ class SimulatorBase:
     @abstractmethod
     def getReward(self):
         raise NotImplementedError("getReward is not implemented")
-    
+
     # ---------------------------------- Override ----------------------------------
     # ------------------------------------------------------------------------------
 
@@ -716,7 +781,7 @@ class SimulatorBase:
         terminated = self.checkTerminated()
         if terminated:
             self.resetState()
-        
+
         self.post_physics_step()
         if self.config.enable_render and self.render_cnt-1 < self.mj_data.time * self.render_fps:
             self.render()

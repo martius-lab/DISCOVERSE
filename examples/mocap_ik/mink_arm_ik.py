@@ -6,12 +6,14 @@ from typing import Optional, Tuple, Dict, Any
 from discoverse.utils import get_site_tmat
 
 class Mink_IK:
-    def __init__(self, mjcf_path, arm_dof):
+    def __init__(self, mjcf_path, arm_dof, base_frame_name="armbase", end_effector_frame_name="endpoint"):
         self.arm_dof = arm_dof
+        self.base_frame_name = base_frame_name
+        self.end_effector_frame_name = end_effector_frame_name
         self.mj_model = mujoco.MjModel.from_xml_path(mjcf_path)
         self.configuration = mink.Configuration(self.mj_model)
         self.end_effector_task = mink.FrameTask(
-            frame_name="endpoint",
+            frame_name=self.end_effector_frame_name,
             frame_type="site",
             position_cost=100.0,
             orientation_cost=10.0,
@@ -44,8 +46,8 @@ class Mink_IK:
         tmp_q = self.configuration.data.qpos.copy()
         tmp_q[:len(current_qpos)] = current_qpos[:]
         self.configuration.update(tmp_q)
-        tmat_base = get_site_tmat(self.configuration.data, "armbase")
-        tmat_endpoint = get_site_tmat(self.configuration.data, "endpoint")
+        tmat_base = get_site_tmat(self.configuration.data, self.base_frame_name)
+        tmat_endpoint = get_site_tmat(self.configuration.data, self.end_effector_frame_name)
         tmat_local = np.linalg.inv(tmat_base) @ tmat_endpoint
         target_position = tmat_local[:3,3]
         target_quat_wxyz = Rotation.from_matrix(tmat_local[:3,:3]).as_quat()[[3,0,1,2]]
@@ -68,6 +70,7 @@ class Mink_IK:
         Returns:
             Tuple[关节位置, 是否收敛, 求解信息]
         """
+        print("still solving ik...")
         
         # 更新当前配置
         tmp_q = self.configuration.data.qpos.copy()
@@ -87,7 +90,7 @@ class Mink_IK:
         T_target = np.eye(4)
         T_target[:3, :3] = target_rot_matrix
         T_target[:3, 3] = target_pos
-        tmat_base = get_site_tmat(self.configuration.data, "armbase")
+        tmat_base = get_site_tmat(self.configuration.data, self.base_frame_name)
         
         # 设置目标
         target_SE3 = mink.SE3.from_matrix(tmat_base @ T_target)

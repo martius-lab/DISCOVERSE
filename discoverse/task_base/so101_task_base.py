@@ -1,0 +1,216 @@
+import os
+import json
+import glfw
+import mujoco
+import numpy as np
+from scipy.spatial.transform import Rotation
+from discoverse.utils import get_random_texture
+import mediapy
+import pickle
+
+from discoverse.robots_env.so101_base import SO101Base, SO101Cfg
+from discoverse.utils import get_body_tmat
+from discoverse.utils.lerobot_format import create_dataset, build_dataset_frame, ACTION, OBS_STR, OBS_KEYS, ACTION_KEYS
+from lerobot.datasets.lerobot_dataset import LeRobotDataset
+
+def recoder_so101(save_path, act_lst, obs_lst, cfg, state_lst=None, overview_only=False):
+    if os.path.exists(save_path):
+        pass
+    os.makedirs(save_path, exist_ok=True)
+
+    with open(os.path.join(save_path, "obs_action.json"), "w") as fp:
+        obj = {
+            "time" : [o['time'] for o in obs_lst],
+            "obs"  : {
+                "jq" : [o['jq'] for o in obs_lst],
+                "jv" : [o['jv'] for o in obs_lst],
+                "jf" : [o['jf'] for o in obs_lst],
+                "ep" : [o['ep'] for o in obs_lst],
+                "eq" : [o['eq'] for o in obs_lst],
+            },
+            "act"  : act_lst,
+        }
+        json.dump(obj, fp)
+
+    # Save MuJoCo states if provided (for later playback)
+    # if state_lst is not None:
+    #     np.savez_compressed(os.path.join(save_path, "states.npz"), states=state_lst)
+    if state_lst is not None:
+        with open(os.path.join(save_path, "mujoco_states.pkl"), "wb") as f:
+            pickle.dump(state_lst, f)
+    # Save videos
+    if overview_only:
+        # Only save overview camera (typically camera 0)
+        if len(cfg.obs_rgb_cam_id) > 0:
+            mediapy.write_video(
+                os.path.join(save_path, "overview.mp4"),
+                [o["img"][cfg.obs_rgb_cam_id[0]] for o in obs_lst],
+                fps=cfg.render_set["fps"],
+            )
+    else:
+        # Save all cameras
+        for id in cfg.obs_rgb_cam_id:
+            mediapy.write_video(
+                os.path.join(save_path, f"cam_{id}.mp4"),
+                [o["img"][id] for o in obs_lst],
+                fps=cfg.render_set["fps"],
+            )
+
+class SO101TaskBase(SO101Base):
+    target_control = np.zeros(6)
+    joint_move_ratio = np.zeros(6)
+    action_done_dict = {
+        "joint"   : False,
+        "gripper" : False,
+        "delay"   : False,
+    }
+    delay_cnt = 0
+    reset_sig = False
+    cam_id = 0
+
+    def resetState(self):
+        super().resetState()
+        self.target_control[:] = self.init_joint_ctrl[:]
+        self.domain_randomization()
+        mujoco.mj_forward(self.mj_model, self.mj_data)
+        self.reset_sig = True
+
+    def random_table_height(self, table_name="table", obj_name_list=[]):
+        if not hasattr(self, "table_init_posi"):
+            self.table_init_posi = self.mj_model.body(table_name).pos.copy()
+        change_height = np.random.uniform(-0.03, 0.07)
+        self.mj_model.body(table_name).pos = self.table_init_posi.copy()
+        self.mj_model.body(table_name).pos[2] = self.table_init_posi[2] - change_height
+        for obj_name in obj_name_list:
+            self.object_pose(obj_name)[2] -= change_height
+
+    def random_table_texture(self):
+        self.update_texture("tc_texture", get_random_texture())
+        self.random_material("tc_texture")
+
+    def random_material(self, mtl_name, random_color=False, emission=False):
+        try:
+            if random_color:
+                self.mj_model.material(mtl_name).rgba[:3] = np.random.rand(3)
+            if emission:
+                self.mj_model.material(mtl_name).emission = np.random.rand()
+            self.mj_model.material(mtl_name).specular = np.random.rand()
+            self.mj_model.material(mtl_name).reflectance = np.random.rand()
+            self.mj_model.material(mtl_name).shininess = np.random.rand()
+        except KeyError:
+            print(f"Warning: material {mtl_name} not found")
+
+    def random_light(self, random_dir=True, random_color=True, random_active=True, write_color=False):
+        if write_color:
+            for i in range(self.mj_model.nlight):
+                self.mj_model.light_ambient[i, :] = np.random.random()
+                self.mj_model.light_diffuse[i, :] = np.random.random()
+                self.mj_model.light_specular[i, :] = np.random.random()
+        elif random_color:
+            self.mj_model.light_ambient[...] = np.random.random(size=self.mj_model.light_ambient.shape)
+            self.mj_model.light_diffuse[...] = np.random.random(size=self.mj_model.light_diffuse.shape)
+            self.mj_model.light_specular[...] = np.random.random(size=self.mj_model.light_specular.shape)
+
+        if random_active:
+            self.mj_model.light_active[:] = np.int32(np.random.rand(self.mj_model.nlight) > 0.5).tolist()
+
+        if np.sum(self.mj_model.light_active) == 0:
+            self.mj_model.light_active[np.random.randint(self.mj_model.nlight)] = 1
+
+        self.mj_model.light_pos[:,:2] = self.mj_model.light_pos0[:,:2] + np.random.normal(scale=0.3, size=self.mj_model.light_pos[:,:2].shape)
+        self.mj_model.light_pos[:,2] = self.mj_model.light_pos0[:,2] + np.random.normal(scale=0.2, size=self.mj_model.light_pos[:,2].shape)
+
+        if random_dir:
+            self.mj_model.light_dir[:] = np.random.random(size=self.mj_model.light_dir.shape) - 0.5
+            self.mj_model.light_dir[:,2] *= 2.0
+            self.mj_model.light_dir[:] = self.mj_model.light_dir[:] / np.linalg.norm(self.mj_model.light_dir[:], axis=1, keepdims=True)
+            self.mj_model.light_dir[:,2] = -np.abs(self.mj_model.light_dir[:,2])
+
+    def domain_randomization(self):
+        pass
+
+    def checkActionDone(self):
+        joint_done = np.allclose(self.sensor_joint_qpos[:5], self.target_control[:5], atol=3e-2) and np.abs(self.sensor_joint_qvel[:5]).sum() < 0.1
+        gripper_done = np.allclose(self.sensor_joint_qpos[5], self.target_control[5], atol=0.016) and np.abs(self.sensor_joint_qvel[5]).sum() < 0.005
+        self.delay_cnt -= 1
+        delay_done = (self.delay_cnt<=0)
+        self.action_done_dict = {
+            "joint"   : joint_done,
+            "gripper" : gripper_done,
+            "delay"   : delay_done,
+        }
+        return joint_done and gripper_done and delay_done
+
+    def printMessage(self):
+        super().printMessage()
+        print("    target control = ", self.target_control)
+        print("    action done: ")
+        for k, v in self.action_done_dict.items():
+            print(f"        {k}: {v}")
+
+        print("camera foyv = ", self.mj_model.vis.global_.fovy)
+        cam_xyz, cam_wxyz = self.getCameraPose(self.cam_id)
+        print(f"    camera_{self.cam_id} =\n({cam_xyz}\n{Rotation.from_quat(cam_wxyz[[1,2,3,0]]).as_matrix()})")
+
+    def check_success(self):
+        raise NotImplementedError
+
+    def on_key(self, window, key, scancode, action, mods):
+        ret = super().on_key(window, key, scancode, action, mods)
+        if action == glfw.PRESS:
+            if key == glfw.KEY_MINUS:
+                self.mj_model.vis.global_.fovy = np.clip(self.mj_model.vis.global_.fovy*0.95, 5, 175)
+            elif key == glfw.KEY_EQUAL:
+                self.mj_model.vis.global_.fovy = np.clip(self.mj_model.vis.global_.fovy*1.05, 5, 175)
+        return ret
+
+    def save_lerobot_episode(self, data_path, dataset_path, obs_lst, actions, task_description):
+        # Create LeRobot dataset - dataset will be at dataset_path/discoverse/{robot_name}
+        # LeRobot expects structure: root/repo_id/meta, root/repo_id/data, etc.
+
+        robot_name = data_path.split("/")[-2].split("_")[0]  # e.g., so101_place_block -> so101
+        dataset_id = f"discoverse/{robot_name}"
+        dataset_path = os.path.join(dataset_path, dataset_id)
+        meta_path = os.path.join(dataset_path, "meta")
+
+        if os.path.exists(meta_path):
+            print(f"Loading existing dataset from {dataset_path} with {dataset_id}")
+            # Pass root as the dataset directory, repo_id as "dataset"
+            dataset = LeRobotDataset(repo_id=dataset_id, root=dataset_path)
+        else:
+            print(f"Creating new dataset at {dataset_path} with id: {dataset_id}")
+            dataset = create_dataset(dataset_id=dataset_id, output_dir=dataset_path)
+
+        # Save to LeRobot dataset format
+        print("Saving episode to LeRobot dataset...")
+
+        # Define camera name mapping (camera index to LeRobot camera name)
+        # This should match the camera names in create_dataset in lerobot_format.py
+        camera_name_mapping = {0: "head", 1: "wrist"}
+
+        for t, (act, obs) in enumerate(zip(actions, obs_lst)):
+            # Build action frame
+            act_dict = {k: v for k, v in zip(ACTION_KEYS, act)}
+            act_frame = build_dataset_frame(dataset.features, act_dict, prefix=ACTION)
+
+            # Build observation frame
+            obs_dict = {k: np.rad2deg(v) for k, v in zip(OBS_KEYS, obs['jq'])}
+
+            # Add camera images using the expected camera names
+            if 'img' in obs and isinstance(obs['img'], dict):
+                for cam_id in self.config.obs_rgb_cam_id:
+                    # Map camera index to expected name
+                    cam_name = camera_name_mapping.get(cam_id, f"cam_{cam_id}")
+                    if cam_id in obs['img']:
+                        obs_dict[cam_name] = obs['img'][cam_id]
+
+            obs_frame = build_dataset_frame(dataset.features, obs_dict, prefix=OBS_STR)
+
+            # Combine action and observation
+            frame = {**act_frame, **obs_frame, "task": task_description}
+            dataset.add_frame(frame)
+
+        # Save the episode
+        dataset.save_episode()
+        print(f"Episode saved to dataset: {dataset_path}")
+        print("Videos are stored in the LeRobot dataset structure")

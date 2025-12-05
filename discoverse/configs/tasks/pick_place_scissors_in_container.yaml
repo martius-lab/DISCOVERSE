@@ -1,0 +1,145 @@
+# Pick and Place Daily Object into Container Task Configuration
+# The SO101 robot will pick up a small daily-use object (scissors) and place it inside a plant container.
+
+task_name: "pick_place_scissors_in_container"
+robot_name: "so101"
+description: "SO101 picks up a pair of scissors and places it into a turquoise plant container."
+
+objects:
+  - "Diamond_Visions_Scissors_Red"
+  - "Ecoforms_Plant_Container_QP_Turquoise"
+
+robot_config:
+  gs_models:
+    background: "scene/lab3/point_cloud.ply"
+    Diamond_Visions_Scissors_Red: "object/Diamond_Visions_Scissors_Red.ply"
+    Ecoforms_Plant_Container_QP_Turquoise: "object/Ecoforms_Plant_Container_QP_Turquoise.ply"
+
+  # Initial joint positions for so101 (6 joints: 5 arm + 1 gripper)
+  init_qpos: [0.0, -0.7, 0.7, 1.0, -0.6, 0.0]
+
+  simulation:
+    timestep: 0.001
+    decimation: 4
+    sync: true
+    headless: false
+
+  rendering:
+    fps: 20
+    width: 640
+    height: 480
+
+  camera_ids: [0]
+
+  save_mjb_and_task_config: true
+
+randomization:
+  object_positions:
+    - object: "Diamond_Visions_Scissors_Red"
+      position_range:
+        x: 0.06
+        y: 0.06
+        z: 0.01
+
+    - object: "Ecoforms_Plant_Container_QP_Turquoise"
+      position_range:
+        x: 0.04
+        y: 0.04
+
+  table_height: true
+
+  table_config:
+    table_name: "table"
+    affected_objects:
+      - "Diamond_Visions_Scissors_Red"
+      - "Ecoforms_Plant_Container_QP_Turquoise"
+
+  materials:
+    - "Diamond_Visions_Scissors_Red_material"
+    - "Ecoforms_Plant_Container_QP_Turquoise_material"
+
+  lighting: true
+  light_config:
+    direction: true
+    color: true
+    active: true
+
+action_sequence:
+  # Step 0: Move above scissors
+  - type: "move_to_object"
+    params:
+      object: "Diamond_Visions_Scissors_Red"
+      offset: [0, 0, 0.12]
+      rotation:
+        euler: [0, 180, 0]
+        seq: "xyz"
+        degrees: true
+      gripper: 0.8
+
+  # Step 1: Lower to scissors
+  - type: "move_to_object"
+    params:
+      object: "Diamond_Visions_Scissors_Red"
+      offset: [0, 0, 0.025]
+      rotation:
+        euler: [0, 180, 0]
+        seq: "xyz"
+        degrees: true
+
+  # Step 2: Grasp scissors
+  - type: "grasp"
+    params:
+      position: 0.0
+
+  # Step 3: Small wait for grasp stabilization
+  - type: "delay"
+    params:
+      duration: 0.2
+
+  # Step 4: Lift scissors
+  - type: "offset_current"
+    params:
+      offset: [0, 0, 0.12]
+
+  # Step 5: Move above container
+  - type: "move_to_object"
+    params:
+      object: "Ecoforms_Plant_Container_QP_Turquoise"
+      offset: [0, 0, 0.13]
+      rotation:
+        euler: [0, 180, 0]
+        seq: "xyz"
+        degrees: true
+
+  # Step 6: Lower into container
+  - type: "move_to_object"
+    params:
+      object: "Ecoforms_Plant_Container_QP_Turquoise"
+      offset: [0, 0, 0.05]
+      rotation:
+        euler: [0, 180, 0]
+        seq: "xyz"
+        degrees: true
+
+  # Step 7: Release scissors
+  - type: "release"
+    params:
+      position: 0.04
+
+  # Step 8: Retreat upward
+  - type: "offset_current"
+    params:
+      offset: [0, 0, 0.09]
+
+success_conditions:
+  position_conditions:
+    - type: "object_near_object"
+      object1: "Diamond_Visions_Scissors_Red"
+      object2: "Ecoforms_Plant_Container_QP_Turquoise"
+      threshold: 0.06
+
+  custom_conditions:
+    - expression: "get_body_tmat(mj_data, 'Diamond_Visions_Scissors_Red')[2,3] > 0.73"
+
+max_time: 15.0
+move_speed: 0.65

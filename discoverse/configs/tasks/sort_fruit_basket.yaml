@@ -1,0 +1,275 @@
+# Sorting Fruit Basket Task Configuration
+# The SO101 robot picks up various fruits from an assorted set and places them neatly into a fruit basket.
+
+task_name: "sort_fruit_basket"
+robot_name: "so101"
+description: "SO101 picks three different fruits from the ASSORTED_VEGETABLE_SET and places them into a Squirt_Strain_Fruit_Basket."
+
+objects:
+  - "ASSORTED_VEGETABLE_SET"
+  - "Squirt_Strain_Fruit_Basket"
+
+robot_config:
+  gs_models:
+    background: "scene/lab3/point_cloud.ply"
+    ASSORTED_VEGETABLE_SET: "object/ASSORTED_VEGETABLE_SET.ply"
+    Squirt_Strain_Fruit_Basket: "object/Squirt_Strain_Fruit_Basket.ply"
+
+  init_qpos: [0.0, -0.6, 0.7, 1.0, -0.5, 0.0]
+
+  simulation:
+    timestep: 0.001
+    decimation: 4
+    sync: true
+    headless: false
+
+  rendering:
+    fps: 30
+    width: 640
+    height: 480
+
+  camera_ids: [0, 1]
+
+  save_mjb_and_task_config: true
+
+randomization:
+  object_positions:
+    - object: "ASSORTED_VEGETABLE_SET"
+      position_range:
+        x: 0.06
+        y: 0.06
+        z: 0.03
+    - object: "Squirt_Strain_Fruit_Basket"
+      position_range:
+        x: 0.06
+        y: 0.06
+
+  table_height: true
+  table_config:
+    table_name: "table"
+    affected_objects:
+      - "ASSORTED_VEGETABLE_SET"
+      - "Squirt_Strain_Fruit_Basket"
+
+  materials:
+    - "ASSORTED_VEGETABLE_SET_material"
+    - "Squirt_Strain_Fruit_Basket_material"
+
+  lighting: true
+  light_config:
+    direction: true
+    color: true
+    active: true
+
+action_sequence:
+  # Approaching first fruit above set
+  # - type: "move_to_object"
+  #   params:
+  #     object: "ASSORTED_VEGETABLE_SET"
+  #     offset: [0.03, 0.015, 0.10]
+  #     rotation:
+  #       euler: [0, 180, 0]
+  #       seq: "xyz"
+  #       degrees: true
+  #     gripper: 0.8
+
+  # # Lower to first fruit
+  # - type: "move_to_object"
+  #   params:
+  #     object: "ASSORTED_VEGETABLE_SET"
+  #     offset: [0.03, 0.015, 0.025]
+  #     rotation:
+  #       euler: [0, 180, 0]
+  #       seq: "xyz"
+  #       degrees: true
+
+  # Grasp first fruit
+  - type: "grasp"
+    params:
+      object: "ASSORTED_VEGETABLE_SET"
+      position: 0.0
+
+  # Stabilize grasp
+  - type: "delay"
+    params:
+      duration: 0.18
+
+  # Lift first fruit
+  - type: "offset_current"
+    params:
+      offset: [0, 0, 0.11]
+
+  # Move over basket
+  - type: "move_to_object"
+    params:
+      object: "Squirt_Strain_Fruit_Basket"
+      offset: [0.0, 0.03, 0.12]
+      rotation:
+        euler: [0, 180, 0]
+        seq: "xyz"
+        degrees: true
+
+  # Lower slightly into basket
+  - type: "move_to_object"
+    params:
+      object: "Squirt_Strain_Fruit_Basket"
+      offset: [0.0, 0.03, 0.05]
+      rotation:
+        euler: [0, 180, 0]
+        seq: "xyz"
+        degrees: true
+
+  # Release first fruit
+  - type: "release"
+    params:
+      position: 0.8
+
+  # Retreat up
+  - type: "offset_current"
+    params:
+      offset: [0, 0, 0.08]
+
+  # Approach second fruit (different offset in set)
+  - type: "move_to_object"
+    params:
+      object: "ASSORTED_VEGETABLE_SET"
+      offset: [-0.028, -0.01, 0.10]
+      rotation:
+        euler: [0, 180, 0]
+        seq: "xyz"
+        degrees: true
+      gripper: 0.8
+
+  # Lower to second fruit
+  - type: "move_to_object"
+    params:
+      object: "ASSORTED_VEGETABLE_SET"
+      offset: [-0.028, -0.01, 0.025]
+      rotation:
+        euler: [0, 180, 0]
+        seq: "xyz"
+        degrees: true
+
+  # Grasp second fruit
+  - type: "grasp"
+    params:
+      position: 0.0
+
+  # Stabilize
+  - type: "delay"
+    params:
+      duration: 0.18
+
+  # Lift second fruit
+  - type: "offset_current"
+    params:
+      offset: [0, 0, 0.11]
+
+  # Move over new basket position
+  - type: "move_to_object"
+    params:
+      object: "Squirt_Strain_Fruit_Basket"
+      offset: [0.02, -0.02, 0.12]
+      rotation:
+        euler: [0, 180, 0]
+        seq: "xyz"
+        degrees: true
+
+  # Lower into basket
+  - type: "move_to_object"
+    params:
+      object: "Squirt_Strain_Fruit_Basket"
+      offset: [0.02, -0.02, 0.05]
+      rotation:
+        euler: [0, 180, 0]
+        seq: "xyz"
+        degrees: true
+
+  # Release second fruit
+  - type: "release"
+    params:
+      position: 0.8
+
+  # Retreat up
+  - type: "offset_current"
+    params:
+      offset: [0, 0, 0.08]
+
+  # Approach third fruit (center)
+  - type: "move_to_object"
+    params:
+      object: "ASSORTED_VEGETABLE_SET"
+      offset: [0.0, -0.03, 0.10]
+      rotation:
+        euler: [0, 180, 0]
+        seq: "xyz"
+        degrees: true
+      gripper: 0.8
+
+  # Lower to third fruit
+  - type: "move_to_object"
+    params:
+      object: "ASSORTED_VEGETABLE_SET"
+      offset: [0.0, -0.03, 0.027]
+      rotation:
+        euler: [0, 180, 0]
+        seq: "xyz"
+        degrees: true
+
+  # Grasp third fruit
+  - type: "grasp"
+    params:
+      position: 0.0
+
+  # Stabilize
+  - type: "delay"
+    params:
+      duration: 0.15
+
+  # Lift up
+  - type: "offset_current"
+    params:
+      offset: [0, 0, 0.114]
+
+  # Move over basket (final position)
+  - type: "move_to_object"
+    params:
+      object: "Squirt_Strain_Fruit_Basket"
+      offset: [-0.025, 0.0, 0.12]
+      rotation:
+        euler: [0, 180, 0]
+        seq: "xyz"
+        degrees: true
+
+  # Lower into basket
+  - type: "move_to_object"
+    params:
+      object: "Squirt_Strain_Fruit_Basket"
+      offset: [-0.025, 0.0, 0.05]
+      rotation:
+        euler: [0, 180, 0]
+        seq: "xyz"
+        degrees: true
+
+  # Release third fruit
+  - type: "release"
+    params:
+      position: 0.8
+
+  # Retreat up
+  - type: "offset_current"
+    params:
+      offset: [0, 0, 0.12]
+
+success_conditions:
+  position_conditions:
+    - type: "planar_distance"
+      object1: "ASSORTED_VEGETABLE_SET"
+      object2: "Squirt_Strain_Fruit_Basket"
+      axes: "xy"
+      threshold: 0.05
+  custom_conditions:
+    - expression: "get_body_tmat(mj_data, 'ASSORTED_VEGETABLE_SET')[2,3] > 0.73"
+
+max_time: 19.0
+move_speed: 0.7
