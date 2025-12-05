@@ -74,14 +74,22 @@ def main():
             f for f in all_obj_files if "_decomp_" not in f.name
         ]
         texture_path = obj_dir / "texture.png"
-        assert len(collision_meshes) > 0, f"No collision meshes found for {obj_dir}"
-        assert len(visual_meshes) > 0, f"No visual mesh found for {obj_dir}"
         visual_mesh = visual_meshes[0]
         yaml_files = list(obj_dir.glob("*.yaml"))
+        if (len(collision_meshes) == 0 or len(visual_meshes) == 0 or not texture_path.exists() or len(yaml_files) == 0):
+            if args.verbose:
+                print(f"Skipping object {obj_dir} due to missing files.")
+            continue
+        # assert len(collision_meshes) > 0, f"No collision meshes found for {obj_dir}"
+        # assert len(visual_meshes) > 0, f"No visual mesh found for {obj_dir}"
 
         # Check if bounding box volume is above threshold (replace .obj with .yaml)
         # Remove file extension and add .yaml
         yaml_path = visual_mesh.with_suffix('.yaml')
+        if not yaml_path.exists():
+            if args.verbose:
+                print(f"Skipping object {obj_dir} due to missing yaml file.")
+            continue
         with open(yaml_path, 'r') as f:
             yaml_data = yaml.safe_load(f)
             bbox = np.array(yaml_data["bbox"])
@@ -113,21 +121,21 @@ def main():
             if not dst_path.exists():
                 if args.verbose:
                     print(f"Copying collision mesh {collision_mesh} to {dst_path}")
-                shutil.copy2(collision_mesh, dst_path)
+                # shutil.copy2(collision_mesh, dst_path)
 
         # Copy visual mesh
         visual_mesh_dst = mesh_dir / visual_mesh.name[len(args.prefix):]
         if not visual_mesh_dst.exists():
             if args.verbose:
                 print(f"Copying visual mesh {visual_mesh} to {visual_mesh_dst}")
-            shutil.copy2(visual_mesh, visual_mesh_dst)
+            # shutil.copy2(visual_mesh, visual_mesh_dst)
         
         # Copy texture
         texture_dst = mesh_dir / "texture.png"
         if not texture_dst.exists():
             if args.verbose:
                 print(f"Copying texture {texture_path} to {texture_dst}")
-            shutil.copy2(texture_path, texture_dst)
+            # shutil.copy2(texture_path, texture_dst)
 
         # Copy ymal files
         for yaml_file in yaml_files:
@@ -135,7 +143,7 @@ def main():
             if not dst_path.exists():
                 if args.verbose:
                     print(f"Copying yaml file {yaml_file} to {dst_path}")
-                shutil.copy2(yaml_file, dst_path)
+                # shutil.copy2(yaml_file, dst_path)
 
         ############################
         # Create MJCF file
@@ -209,7 +217,7 @@ def main():
                 root_object,
                 "geom",
                 type="mesh",
-                rgba="0.5 0.5 0.5 1",
+                rgba="0.5 0.5 0.5 0",
                 mesh=f"{obj_name}_part_{j}",
             )
         # Write MJCF object file
