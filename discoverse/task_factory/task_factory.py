@@ -482,7 +482,7 @@ def run_yaml_task(yaml_path, data_idx=0, data_set_size=1, auto=False, headless=F
     stm = SimpleStateMachine()
     stm.max_state_cnt = len(factory.motion_primitives) - 1
     max_time = factory.config.get('max_time', 20.0)
-    primitive_timeout = factory.config.get('primitive_timeout', 4.0)  # Default 4 second timeout per primitive
+    primitive_timeout = factory.config.get('primitive_timeout', 30.0)  # Default 4 second timeout per primitive
     
     # Initialize action array with robot's joint count (nj)
     action = np.zeros(sim_node.nj)

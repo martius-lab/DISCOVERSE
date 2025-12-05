@@ -1,0 +1,14 @@
+<mujoco model="pick_place_pikachu">
+  <include file="../object/library_objects/Pokémon_Yellow_Special_Pikachu_Edition_Nintendo_Game_Boy_Color_dependencies.xml"/>
+  <compiler angle="radian" meshdir="../../meshes/" texturedir="../../meshes/"/>
+  <worldbody>
+    <site name="manipulator_locate" pos="0.3 1. 0.71" euler="0 0 3.1416"/>
+    <body name="Pokémon_Yellow_Special_Pikachu_Edition_Nintendo_Game_Boy_Color" pos="0.0 0.90 0.714">
+      <joint type="free" frictionloss="0.00001"/>
+      <inertial pos="0 0 0" mass="0.008" diaginertia="4e-7 4e-7 4e-7"/>
+      <geom type="mesh" mesh="Pokémon_Yellow_Special_Pikachu_Edition_Nintendo_Game_Boy_Color" condim="4" solimp="2 1 0.01" solref="0.01 1" friction="0.7 0.003 0.0003" rgba="1 0.9 0.14 1" pos="0 0 0" material="Pokémon_Yellow_Special_Pikachu_Edition_Nintendo_Game_Boy_Color_material"/>
+      <include file="../object/library_objects/Pokémon_Yellow_Special_Pikachu_Edition_Nintendo_Game_Boy_Color.xml"/>
+    </body>
+  </worldbody>
+  <include file="../scene/qz_lab3.xml"/>
+</mujoco>

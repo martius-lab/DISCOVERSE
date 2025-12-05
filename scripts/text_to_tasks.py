@@ -27,8 +27,8 @@ def get_path_content(path: str, file_type: str) -> dict[str, str]:
 
 
 current_file_dir = os.path.dirname(os.path.abspath(__file__))
-
-objects_name = get_path_content(f"/data/zhang/ws/hackathon2025_ws/lerobot_hackathon/discoverse_meshes/library_objects", "dir")
+library_objects_path = os.path.join(DISCOVERSE_ROOT_DIR, "models/meshes/library_objects")
+objects_name = get_path_content(library_objects_path, "dir")
 
 example_output_1_yaml = get_file_content(current_file_dir+"/../discoverse/configs/tasks/so101_pick_place_cube.yaml")
 example_output_1_xml = get_file_content(current_file_dir+"/../models/mjcf/task_environments/pick_place_cube.xml")

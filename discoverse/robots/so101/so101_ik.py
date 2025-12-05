@@ -151,17 +151,18 @@ class SO101_IK:
         converged = self.converge_ik(0.005)
         solution = self.configuration.data.qpos[:self.arm_dof]
 
-        return solution #, converged
+        return solution , converged
     
     def properIK(self, 
                  target_pos: np.ndarray, 
                  target_ori: np.ndarray, 
                  current_qpos: np.ndarray,
                  reference_qpos: Optional[np.ndarray] = None) -> Tuple[np.ndarray, bool]:
-        return self.solve_ik(target_pos, 
+        solution, _ = self.solve_ik(target_pos, 
                  target_ori, 
                  current_qpos,
                  reference_qpos)
+        return solution    
 
 if __name__ == "__main__":
     np.set_printoptions(precision=3, suppress=True, linewidth=1000)

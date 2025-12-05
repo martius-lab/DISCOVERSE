@@ -8,7 +8,10 @@ Each primitive can use get_body_tmat to trace object poses with optional offsets
 import numpy as np
 from scipy.spatial.transform import Rotation
 from discoverse.utils import get_body_tmat, get_site_tmat
-
+from discoverse import DISCOVERSE_ROOT_DIR
+from pathlib import Path
+import os
+import yaml
 
 class MotionPrimitive:
     """Base class for motion primitives"""
@@ -16,6 +19,12 @@ class MotionPrimitive:
     def __init__(self, name, params):
         self.name = name
         self.params = params
+        self.object_config = None
+        if 'object' in params.keys():
+            object_config_path = Path(os.path.join(DISCOVERSE_ROOT_DIR, "models/meshes/library_objects", self.params['object'], self.params['object'] + ".yaml"))
+            if object_config_path.is_file():
+                with open(object_config_path, 'r') as object_config_yaml:
+                    self.object_config = yaml.safe_load(object_config_yaml)
     
     def execute(self, sim_node, arm_ik, tmat_armbase_2_world):
         """Execute the motion primitive and return target control values"""
@@ -151,8 +160,68 @@ class GraspPrimitive(MotionPrimitive):
     """
     
     def execute(self, sim_node, arm_ik, tmat_armbase_2_world):
-        target_control = sim_node.target_control.copy()
-        target_control[sim_node.nj - 1] = self.params.get('position', 0.0)
+        # How about I modify this primitive to sample all possible graspable positions,
+        # measure which one is the closest to the current pose of the gripper, and execute
+        # pretty much the move to pose primitive and then close the gripper?
+        # Let's try to do this.
+        object_name = self.params['object']
+        tmat_object = self.get_target_tmat(sim_node, object_name)
+        gripper_jaw_length = 8.5e-2 # m
+        # Query potential grasp poses from the config
+        grasping_poses = self.object_config['grasping_poses']
+        # Just choose the first possible feasible grasping pose for now.
+        R_grasp_pose_claw = Rotation.from_euler('XYZ', np.array([0.0, 90.0, 0.0]), degrees=True).as_matrix()
+        gf_possible_target_pose_list = []
+        distances_to_current = []
+        gf_claw_pose = get_site_tmat(sim_node.mj_data, "endpoint")
+        for grasp_pose_dict in grasping_poses:
+            lf_grasp_position = np.asarray(grasp_pose_dict['p'])
+            lf_grasp_q = np.asarray(grasp_pose_dict['r'])  # qw, qx, qy, qz
+            lf_grasp_R = Rotation.from_quat(lf_grasp_q, scalar_first=True).as_matrix()
+            lf_claw_mid_grasp_R = R_grasp_pose_claw @ lf_grasp_R # Object frame grasp orientation of claw mid point
+            lf_claw_mid_grasp_pose = np.eye(4)
+            lf_claw_mid_grasp_pose[:3, :3] = lf_claw_mid_grasp_R
+            grasp_opening = grasp_pose_dict['opening']
+            # Let's check if this opening is even feasible for the SO101 gripper through a very rough metric
+            grasp_angle = np.arccos((2 * gripper_jaw_length**2 - grasp_opening**2) / (2 * gripper_jaw_length**2))
+            if grasp_angle > 1.74533 or grasp_angle < -0.17453:  # 100 degrees in radians or less than -10 degrees
+                continue
+            lf_claw_mid_grasp_pose[:3, 3] = lf_grasp_position
+            gf_claw_mid_grasp_pose = tmat_object @ lf_claw_mid_grasp_pose # This is thse pose midpoint of claw should be in world frame
+            # Assuming the the claw's grasping plane XZ is always parallel during the grasp
+            gf_claw_frame_grasp_pose = gf_claw_mid_grasp_pose.copy()
+            gf_claw_frame_grasp_pose[:3, 3] -= gf_claw_frame_grasp_pose[:3, :3] @ np.array([0.0, 0.0, grasp_opening / 2.0 ])
+
+            # Now we get the current pose of the claw and check if the IK can reach this pose
+            distances_to_current.append(np.linalg.norm(gf_claw_frame_grasp_pose[:3, 3] - gf_claw_pose[:3, 3]))
+            gf_possible_target_pose_list.append(gf_claw_frame_grasp_pose.copy())
+
+        gf_feasible_target_pose_list = []
+        print(f"Total possible grasping poses: {len(gf_possible_target_pose_list)}")
+        if len(gf_possible_target_pose_list) > 0:
+            # Start by getting the closest pose first
+            sorted_indices = np.argsort(distances_to_current)
+            for idx in sorted_indices:
+                gf_target_pose = gf_possible_target_pose_list[idx]
+                target_control = sim_node.target_control.copy()
+                arm_joints = sim_node.nj - 1
+                target_control[:arm_joints], converge = arm_ik.solve_ik(
+                    gf_target_pose[:3, 3], 
+                    gf_target_pose[:3, :3], 
+                    sim_node.mj_data.qpos[:arm_joints]
+                )
+                print(f"Grasp check, pose: {gf_target_pose[:3,3]}, distance to current: {distances_to_current[idx]:.4f}, target_control: {target_control}, converge: {converge}")
+                if converge:
+                    gf_feasible_target_pose_list.append(target_control.copy())
+                    break
+        if not gf_feasible_target_pose_list:
+            print("No feasible grasping pose found, just trying to close the gripper in current pose.")
+            target_control = sim_node.target_control.copy()
+            target_control[sim_node.nj - 1] = self.params.get('position', -0.17453)
+        else:
+            print(f"Feasible grasping pose found: {gf_feasible_target_pose_list[0]}, moving to that pose and closing the gripper.")
+            target_control = gf_feasible_target_pose_list[0]
+            target_control[sim_node.nj - 1] = self.params.get('position', -0.17453)
         return target_control
 
 

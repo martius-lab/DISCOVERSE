@@ -1,0 +1,146 @@
+# Pick and Place Small Object Task Configuration
+# The SO101 robot will pick up a small washable crayon and place it inside a ceramic bowl.
+
+task_name: "pick_place_small_crayon_in_bowl"
+robot_name: "so101"
+description: "SO101 picks up a Crayola washable crayon and places it into a BIA porcelain ramekin bowl."
+
+objects:
+  - "Crayola_Crayons_Washable_24_crayons"
+  - "BIA_Porcelain_Ramekin_With_Glazed_Rim_35_45_oz_cup"
+
+robot_config:
+  gs_models:
+    background: "scene/lab3/point_cloud.ply"
+    Crayola_Crayons_Washable_24_crayons: "object/Crayola_Crayons_Washable_24_crayons.ply"
+    BIA_Porcelain_Ramekin_With_Glazed_Rim_35_45_oz_cup: "object/BIA_Porcelain_Ramekin_With_Glazed_Rim_35_45_oz_cup.ply"
+
+  # Initial joint positions for so101 (6 joints: 5 arm + 1 gripper)
+  init_qpos: [0.0, -0.6, 0.9, 1.2, -0.7, 0.0]
+
+  simulation:
+    timestep: 0.001
+    decimation: 4
+    sync: true
+    headless: false
+
+  rendering:
+    fps: 20
+    width: 640
+    height: 480
+
+  camera_ids: [0]
+
+  save_mjb_and_task_config: true
+
+randomization:
+  object_positions:
+    - object: "Crayola_Crayons_Washable_24_crayons"
+      position_range:
+        x: 0.04
+        y: 0.05
+        z: 0.01
+
+    - object: "BIA_Porcelain_Ramekin_With_Glazed_Rim_35_45_oz_cup"
+      position_range:
+        x: 0.03
+        y: 0.03
+
+  table_height: true
+
+  table_config:
+    table_name: "table"
+    affected_objects:
+      - "Crayola_Crayons_Washable_24_crayons"
+      - "BIA_Porcelain_Ramekin_With_Glazed_Rim_35_45_oz_cup"
+
+  materials:
+    - "Crayola_Crayons_Washable_24_crayons_material"
+    - "BIA_Porcelain_Ramekin_With_Glazed_Rim_35_45_oz_cup_material"
+
+  lighting: true
+  light_config:
+    direction: true
+    color: true
+    active: true
+
+action_sequence:
+  # Step 0: Move above crayon
+  # - type: "move_to_object"
+  #   params:
+  #     object: "Crayola_Crayons_Washable_24_crayons"
+  #     offset: [0, 0, 0.10]
+  #     rotation:
+  #       euler: [0, 180, 0]
+  #       seq: "xyz"
+  #       degrees: true
+  #     gripper: 0.8
+
+  # # Step 1: Lower to contact crayon
+  # - type: "move_to_object"
+  #   params:
+  #     object: "Crayola_Crayons_Washable_24_crayons"
+  #     offset: [0, 0, 0.022]
+  #     rotation:
+  #       euler: [0, 180, 0]
+  #       seq: "xyz"
+  #       degrees: true
+
+  # Step 2: Grasp crayon
+  - type: "grasp"
+    params:
+      object: "Crayola_Crayons_Washable_24_crayons"
+      position: 0.0
+
+  # Step 3: Wait for stabilization
+  - type: "delay"
+    params:
+      duration: 0.15
+
+  # Step 4: Lift crayon
+  - type: "offset_current"
+    params:
+      offset: [0, 0, 0.10]
+
+  # Step 5: Move above bowl
+  - type: "move_to_object"
+    params:
+      object: "BIA_Porcelain_Ramekin_With_Glazed_Rim_35_45_oz_cup"
+      offset: [0, 0, 0.09]
+      rotation:
+        euler: [0, 180, 0]
+        seq: "xyz"
+        degrees: true
+
+  # Step 6: Lower crayon into bowl
+  - type: "move_to_object"
+    params:
+      object: "BIA_Porcelain_Ramekin_With_Glazed_Rim_35_45_oz_cup"
+      offset: [0, 0, 0.04]
+      rotation:
+        euler: [0, 180, 0]
+        seq: "xyz"
+        degrees: true
+
+  # Step 7: Release crayon
+  - type: "release"
+    params:
+      position: 0.08
+
+  # Step 8: Retreat upward
+  - type: "offset_current"
+    params:
+      offset: [0, 0, 0.09]
+
+success_conditions:
+  position_conditions:
+    - type: "object_near_object"
+      object1: "Crayola_Crayons_Washable_24_crayons"
+      object2: "BIA_Porcelain_Ramekin_With_Glazed_Rim_35_45_oz_cup"
+      threshold: 0.055
+
+  custom_conditions:
+    - expression: "get_body_tmat(mj_data, 'Crayola_Crayons_Washable_24_crayons')[2,3] > 0.72"
+
+max_time: 15.0
+move_speed: 0.65
