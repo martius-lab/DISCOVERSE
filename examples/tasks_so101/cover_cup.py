@@ -4,7 +4,6 @@ from scipy.spatial.transform import Rotation
 
 import os
 import argparse
-import multiprocessing as mp
 
 import discoverse
 from discoverse.envs import make_env
@@ -13,11 +12,13 @@ from discoverse import DISCOVERSE_ROOT_DIR, DISCOVERSE_ASSETS_DIR
 from discoverse.robots_env.so101_base import SO101Cfg
 from discoverse.utils import get_body_tmat, step_func, SimpleStateMachine
 from discoverse.task_base import SO101TaskBase, recoder_so101, copypy2
+from discoverse.task_base.recording import Recording
 from discoverse.task_base.airbot_task_base import PyavImageEncoder
 
 class SimNode(SO101TaskBase):
     def __init__(self, config: SO101Cfg):
         super().__init__(config)
+        self.tmat_tgt_local = None
 
     def domain_randomization(self):
         # Randomize object positions if needed
@@ -30,6 +31,81 @@ class SimNode(SO101TaskBase):
         return (abs(tmat_cup[2, 2]) > 0.99) and \
             np.hypot(tmat_plate[0, 3] - tmat_cup[0, 3], tmat_plate[1, 3] - tmat_cup[1, 3]) < 0.02 and \
             np.hypot(tmat_lid[0, 3] - tmat_cup[0, 3], tmat_lid[1, 3] - tmat_cup[1, 3]) < 0.02
+
+    def move_to_pre_grasp_cup(self, arm_ik, tmat_armbase_2_world, trmat_cup_quat):
+        tmat_coffee = get_body_tmat(self.mj_data, "coffeecup_white").copy()
+        tmat_coffee[:3, 3] = tmat_coffee[:3, 3] + 0.1 * tmat_coffee[:3, 1] + 0.1 * tmat_coffee[:3, 2]
+        self.tmat_tgt_local = tmat_armbase_2_world @ tmat_coffee
+        self.target_control[:5] = arm_ik.properIK(self.tmat_tgt_local[:3,3], trmat_cup_quat, self.mj_data.qpos[:5])
+        self.target_control[5] = 1.0
+
+    def move_to_grasp_cup(self, arm_ik, tmat_armbase_2_world, trmat_cup_quat):
+        tmat_coffee = get_body_tmat(self.mj_data, "coffeecup_white").copy()
+        # Position at handle
+        tmat_coffee[:3, 3] = tmat_coffee[:3, 3] + 0.06 * tmat_coffee[:3, 1] + 0.05 * tmat_coffee[:3, 2]
+        self.tmat_tgt_local = tmat_armbase_2_world @ tmat_coffee
+        self.target_control[:5] = arm_ik.properIK(self.tmat_tgt_local[:3,3], trmat_cup_quat, self.mj_data.qpos[:5])
+
+    def grasp_object(self):
+        self.target_control[5] = 0.0
+
+    def stabilize_grasp(self):
+        self.delay_cnt = int(0.25/self.delta_t)
+
+    def lift_cup(self, arm_ik, trmat_cup_quat):
+        self.tmat_tgt_local[2,3] += 0.15
+        self.target_control[:5] = arm_ik.properIK(self.tmat_tgt_local[:3,3], trmat_cup_quat, self.mj_data.qpos[:5])
+
+    def move_cup_to_above_plate(self, arm_ik, tmat_armbase_2_world, trmat_cup_quat):
+        tmat_plate = get_body_tmat(self.mj_data, "plate_white").copy()
+        tmat_plate[:3,3] = tmat_plate[:3, 3] + np.array([0.06, 0.0, 0.13])
+        self.tmat_tgt_local = tmat_armbase_2_world @ tmat_plate
+        self.target_control[:5] = arm_ik.properIK(self.tmat_tgt_local[:3,3], trmat_cup_quat, self.mj_data.qpos[:5])
+
+    def move_cup_to_above_plate_lower(self, arm_ik, tmat_armbase_2_world, trmat_cup_quat):
+        tmat_plate = get_body_tmat(self.mj_data, "plate_white").copy()
+        tmat_plate[:3,3] = tmat_plate[:3, 3] + np.array([0.06, 0.0, 0.08])
+        self.tmat_tgt_local = tmat_armbase_2_world @ tmat_plate
+        self.target_control[:5] = arm_ik.properIK(self.tmat_tgt_local[:3,3], trmat_cup_quat, self.mj_data.qpos[:5])
+
+    def place_cup_on_plate(self, arm_ik, trmat_cup_quat):
+        self.tmat_tgt_local[2,3] -= 0.02
+        self.target_control[:5] = arm_ik.properIK(self.tmat_tgt_local[:3,3], trmat_cup_quat, self.mj_data.qpos[:5])
+
+    def release_object(self):
+        self.target_control[5] = 1.0
+
+    def retract_arm(self, arm_ik, trmat_cup_quat):
+        self.tmat_tgt_local[2,3] += 0.08
+        self.target_control[:5] = arm_ik.properIK(self.tmat_tgt_local[:3,3], trmat_cup_quat, self.mj_data.qpos[:5])
+
+    def move_to_above_lid(self, arm_ik, tmat_armbase_2_world, trmat_lid_quat):
+        tmat_lid = get_body_tmat(self.mj_data, "cup_lid").copy()
+        tmat_lid[:3, 3] = tmat_lid[:3, 3] + 0.1 * tmat_lid[:3, 2]
+        self.tmat_tgt_local = tmat_armbase_2_world @ tmat_lid
+        self.target_control[:5] = arm_ik.properIK(self.tmat_tgt_local[:3,3], trmat_lid_quat, self.mj_data.qpos[:5])
+
+    def lower_to_lid(self, arm_ik, trmat_lid_quat):
+        self.tmat_tgt_local[2,3] -= 0.04
+        self.target_control[:5] = arm_ik.properIK(self.tmat_tgt_local[:3,3], trmat_lid_quat, self.mj_data.qpos[:5])
+
+    def lift_lid(self, arm_ik, trmat_lid_quat):
+        self.tmat_tgt_local[2,3] += 0.08
+        self.target_control[:5] = arm_ik.properIK(self.tmat_tgt_local[:3,3], trmat_lid_quat, self.mj_data.qpos[:5])
+
+    def move_lid_to_above_cup(self, arm_ik, tmat_armbase_2_world, trmat_lid_quat):
+        tmat_cup = get_body_tmat(self.mj_data, "coffeecup_white").copy()
+        tmat_cup[:3,3] = tmat_cup[:3, 3] + np.array([0.0, 0.0, 0.16])
+        self.tmat_tgt_local = tmat_armbase_2_world @ tmat_cup
+        self.target_control[:5] = arm_ik.properIK(self.tmat_tgt_local[:3,3], trmat_lid_quat, self.mj_data.qpos[:5])
+
+    def place_lid_on_cup(self, arm_ik, trmat_lid_quat):
+        self.tmat_tgt_local[2,3] -= 0.02
+        self.target_control[:5] = arm_ik.properIK(self.tmat_tgt_local[:3,3], trmat_lid_quat, self.mj_data.qpos[:5])
+
+    def final_retract(self, arm_ik, trmat_lid_quat):
+        self.tmat_tgt_local[2,3] += 0.05
+        self.target_control[:5] = arm_ik.properIK(self.tmat_tgt_local[:3,3], trmat_lid_quat, self.mj_data.qpos[:5])
 
 cfg = SO101Cfg()
 cfg.gs_model_dict["background"]      = "scene/lab3/point_cloud.ply"
@@ -92,7 +168,7 @@ if __name__ == "__main__":
 
     trmat_cup = Rotation.from_euler("xyz", [0, np.pi, 0], degrees=False).as_matrix()
     trmat_lid = Rotation.from_euler("xyz", [0, np.pi, 0], degrees=False).as_matrix()
-    
+
     # Pass rotation matrix directly or quaternion if preferred. SO101_IK supports both.
     # Converting to quaternion for consistency with previous code
     trmat_cup_quat = Rotation.from_matrix(trmat_cup).as_quat()[[3, 0, 1, 2]]
@@ -105,107 +181,62 @@ if __name__ == "__main__":
     max_time = 20.0 #s
 
     action = np.zeros(6)
-    tmat_tgt_local = np.eye(4)
+    recorder = Recording(save_dir, cfg, start_idx=data_idx)
 
     move_speed = 0.8
     sim_node.reset() # This should be called after sim_node is initialized
-    
+
     while sim_node.running:
         if sim_node.reset_sig:
             sim_node.reset_sig = False
             stm.reset()
             action[:] = sim_node.target_control[:]
-            act_lst, obs_lst = [], []
-            save_path = os.path.join(save_dir, "{:03d}".format(data_idx))
+            recorder.reset()
+            save_path = os.path.join(save_dir, "{:03d}".format(recorder.data_idx))
             os.makedirs(save_path, exist_ok=True)
             encoders = {cam_id: PyavImageEncoder(cfg.render_set["width"], cfg.render_set["height"], save_path, cam_id) for cam_id in cfg.obs_rgb_cam_id}
-        
+
         try:
-            if stm.trigger(): 
+            if stm.trigger():
                 print(f"State: {stm.state_idx}")
                 if stm.state_idx == 0: # Approach cup (pre-grasp position)
-                    tmat_coffee = get_body_tmat(sim_node.mj_data, "coffeecup_white").copy()
-                    tmat_coffee[:3, 3] = tmat_coffee[:3, 3] + 0.1 * tmat_coffee[:3, 1] + 0.1 * tmat_coffee[:3, 2]
-                    tmat_tgt_local = tmat_armbase_2_world @ tmat_coffee
-                    sim_node.target_control[:5] = arm_ik.properIK(tmat_tgt_local[:3,3], trmat_cup_quat, sim_node.mj_data.qpos[:5])
-                    sim_node.target_control[5] = 1.0
-                    
+                    sim_node.move_to_pre_grasp_cup(arm_ik, tmat_armbase_2_world, trmat_cup_quat)
                 elif stm.state_idx == 1: # Move to handle grasp position
-                    tmat_coffee = get_body_tmat(sim_node.mj_data, "coffeecup_white").copy()
-                    # Position at handle
-                    tmat_coffee[:3, 3] = tmat_coffee[:3, 3] + 0.06 * tmat_coffee[:3, 1] + 0.05 * tmat_coffee[:3, 2]
-                    tmat_tgt_local = tmat_armbase_2_world @ tmat_coffee
-                    sim_node.target_control[:5] = arm_ik.properIK(tmat_tgt_local[:3,3], trmat_cup_quat, sim_node.mj_data.qpos[:5])
-                    
+                    sim_node.move_to_grasp_cup(arm_ik, tmat_armbase_2_world, trmat_cup_quat)
                 elif stm.state_idx == 2: # Close gripper
-                    sim_node.target_control[5] = 0.0
-                    
+                    sim_node.grasp_object()
                 elif stm.state_idx == 3: # Wait for grasp
-                    sim_node.delay_cnt = int(0.25/sim_node.delta_t)
-                    
+                    sim_node.stabilize_grasp()
                 elif stm.state_idx == 4: # Lift cup
-                    tmat_tgt_local[2,3] += 0.15
-                    sim_node.target_control[:5] = arm_ik.properIK(tmat_tgt_local[:3,3], trmat_cup_quat, sim_node.mj_data.qpos[:5])
-                    
+                    sim_node.lift_cup(arm_ik, trmat_cup_quat)
                 elif stm.state_idx == 5: # Move above plate (high)
-                    tmat_plate = get_body_tmat(sim_node.mj_data, "plate_white").copy()
-                    tmat_plate[:3,3] = tmat_plate[:3, 3] + np.array([0.06, 0.0, 0.13])
-                    tmat_tgt_local = tmat_armbase_2_world @ tmat_plate
-                    sim_node.target_control[:5] = arm_ik.properIK(tmat_tgt_local[:3,3], trmat_cup_quat, sim_node.mj_data.qpos[:5])
-                    
+                    sim_node.move_cup_to_above_plate(arm_ik, tmat_armbase_2_world, trmat_cup_quat)
                 elif stm.state_idx == 6: # Move above plate (medium)
-                    tmat_plate = get_body_tmat(sim_node.mj_data, "plate_white").copy()
-                    tmat_plate[:3,3] = tmat_plate[:3, 3] + np.array([0.06, 0.0, 0.08])
-                    tmat_tgt_local = tmat_armbase_2_world @ tmat_plate
-                    sim_node.target_control[:5] = arm_ik.properIK(tmat_tgt_local[:3,3], trmat_cup_quat, sim_node.mj_data.qpos[:5])
-                    
+                    sim_node.move_cup_to_above_plate_lower(arm_ik, tmat_armbase_2_world, trmat_cup_quat)
                 elif stm.state_idx == 7: # Lower cup onto plate
-                    tmat_tgt_local[2,3] -= 0.02
-                    sim_node.target_control[:5] = arm_ik.properIK(tmat_tgt_local[:3,3], trmat_cup_quat, sim_node.mj_data.qpos[:5])
-                    
+                    sim_node.place_cup_on_plate(arm_ik, trmat_cup_quat)
                 elif stm.state_idx == 8: # Release cup
-                    sim_node.target_control[5] = 1.0
-                    
+                    sim_node.release_object()
                 elif stm.state_idx == 9: # Retract upward
-                    tmat_tgt_local[2,3] += 0.08
-                    sim_node.target_control[:5] = arm_ik.properIK(tmat_tgt_local[:3,3], trmat_cup_quat, sim_node.mj_data.qpos[:5])
-                    
+                    sim_node.retract_arm(arm_ik, trmat_cup_quat)
                 elif stm.state_idx == 10: # Move above lid
-                    tmat_lid = get_body_tmat(sim_node.mj_data, "cup_lid").copy()
-                    tmat_lid[:3, 3] = tmat_lid[:3, 3] + 0.1 * tmat_lid[:3, 2]
-                    tmat_tgt_local = tmat_armbase_2_world @ tmat_lid
-                    sim_node.target_control[:5] = arm_ik.properIK(tmat_tgt_local[:3,3], trmat_lid_quat, sim_node.mj_data.qpos[:5])
-
+                    sim_node.move_to_above_lid(arm_ik, tmat_armbase_2_world, trmat_lid_quat)
                 elif stm.state_idx == 11: # Lower to lid
-                    tmat_tgt_local[2,3] -= 0.04
-                    sim_node.target_control[:5] = arm_ik.properIK(tmat_tgt_local[:3,3], trmat_lid_quat, sim_node.mj_data.qpos[:5])
-                    
+                    sim_node.lower_to_lid(arm_ik, trmat_lid_quat)
                 elif stm.state_idx == 12: # Grasp lid
-                    sim_node.target_control[5] = 0.0
-                    
+                    sim_node.grasp_object()
                 elif stm.state_idx == 13: # Wait for lid grasp
-                    sim_node.delay_cnt = int(0.25/sim_node.delta_t)
-                    
+                    sim_node.stabilize_grasp()
                 elif stm.state_idx == 14: # Lift lid
-                    tmat_tgt_local[2,3] += 0.08
-                    sim_node.target_control[:5] = arm_ik.properIK(tmat_tgt_local[:3,3], trmat_lid_quat, sim_node.mj_data.qpos[:5])
-                    
+                    sim_node.lift_lid(arm_ik, trmat_lid_quat)
                 elif stm.state_idx == 15: # Move lid above cup
-                    tmat_cup = get_body_tmat(sim_node.mj_data, "coffeecup_white").copy()
-                    tmat_cup[:3,3] = tmat_cup[:3, 3] + np.array([0.0, 0.0, 0.16])
-                    tmat_tgt_local = tmat_armbase_2_world @ tmat_cup
-                    sim_node.target_control[:5] = arm_ik.properIK(tmat_tgt_local[:3,3], trmat_lid_quat, sim_node.mj_data.qpos[:5])
-                    
+                    sim_node.move_lid_to_above_cup(arm_ik, tmat_armbase_2_world, trmat_lid_quat)
                 elif stm.state_idx == 16: # Lower lid onto cup
-                    tmat_tgt_local[2,3] -= 0.02
-                    sim_node.target_control[:5] = arm_ik.properIK(tmat_tgt_local[:3,3], trmat_lid_quat, sim_node.mj_data.qpos[:5])
-                    
+                    sim_node.place_lid_on_cup(arm_ik, trmat_lid_quat)
                 elif stm.state_idx == 17: # Release lid
-                    sim_node.target_control[5] = 1.0
-
+                    sim_node.release_object()
                 elif stm.state_idx == 18: # Final retract
-                    tmat_tgt_local[2,3] += 0.05
-                    sim_node.target_control[:5] = arm_ik.properIK(tmat_tgt_local[:3,3], trmat_lid_quat, sim_node.mj_data.qpos[:5])
+                    sim_node.final_retract(arm_ik, trmat_lid_quat)
 
                 dif = np.abs(action - sim_node.target_control)
                 sim_node.joint_move_ratio = dif / (np.max(dif) + 1e-6)
@@ -229,23 +260,23 @@ if __name__ == "__main__":
 
         obs, _, _, _, _ = sim_node.step(action)
 
-        if len(obs_lst) < sim_node.mj_data.time * cfg.render_set["fps"]:
-            imgs = obs.pop("img")
-            for cam_id, img in imgs.items():
-                encoders[cam_id].encode(img, obs["time"])
-            act_lst.append(action.tolist().copy())
-            obs_lst.append(obs)
+        if len(recorder.obs_lst) < sim_node.mj_data.time * cfg.render_set["fps"]:
+            recorder.add(action.tolist().copy(), obs, sim_node.get_mujoco_state())
 
         if stm.state_idx >= stm.max_state_cnt:
             if sim_node.check_success():
-                recoder_so101(save_path, act_lst, obs_lst, cfg)
-                for encoder in encoders.values():
-                    encoder.close()
-                data_idx += 1
-                print("\r{:4}/{:4} ".format(data_idx, data_set_size), end="")
-                if data_idx >= data_set_size:
+                recorder.record_episode(recoder_so101)
+                print("\r{:4}/{:4} ".format(recorder.data_idx, data_set_size), end="")
+                if recorder.data_idx >= data_set_size:
                     break
             else:
-                print(f"{data_idx} Failed")
-
+                print(f"{recorder.data_idx} Failed")
+                recorder.record_episode(recoder_so101)
+                break
             sim_node.reset()
+
+    recorder.finish_recording()
+
+    # If --render flag is provided, run record_playback.py to render observations
+    if hasattr(args, "render") and args.render:
+        recorder.export_to_lerobot()
