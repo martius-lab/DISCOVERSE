@@ -1,5 +1,7 @@
 <mujoco model="so101">
-
+  <option impratio="1" cone="elliptic" noslip_iterations="3">
+    <flag multiccd="enable"/>
+  </option>
   <compiler angle="radian" meshdir="../../meshes/" texturedir="../../meshes/" autolimits="true"/>
 
   <include file="../scene/skybox.xml"/>
