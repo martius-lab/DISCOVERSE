@@ -29,16 +29,23 @@ class SimNode(SO101TaskBase):
         self.mj_data.qpos[self.nj+7+0] += 2.*(np.random.random() - 0.5) * 0.05
         self.mj_data.qpos[self.nj+7+1] += 2.*(np.random.random() - 0.5) * 0.05
 
-        
+
     def check_success(self):
         tmat_block = get_body_tmat(self.mj_data, "block_green")
         tmat_bowl = get_body_tmat(self.mj_data, "bowl_pink")
         return (abs(tmat_bowl[2, 2]) > 0.99) and np.hypot(tmat_block[0, 3] - tmat_bowl[0, 3], tmat_block[1, 3] - tmat_bowl[1, 3]) < 0.02
 
+
+save_dir = os.path.join(DISCOVERSE_ROOT_DIR, "data", "so101_"+os.path.splitext(os.path.basename(__file__))[0])
+if not os.path.exists(save_dir):
+    os.makedirs(save_dir)
+
 cfg = SO101Cfg()
 robot_name = "so101"
 task_name = "place_block"
-cfg.mjcf_file_path = f"mjcf/tmp/{robot_name}_{task_name}.xml"
+cfg.mjcf_file_path = f"{save_dir}/{task_name}.xml"
+
+
 env = make_env(robot_name, task_name)
 env.export_xml(os.path.join(DISCOVERSE_ASSETS_DIR, cfg.mjcf_file_path))
 
@@ -53,7 +60,7 @@ cfg.render_set   = {
     "height" : 480
 }
 cfg.obs_rgb_cam_id = [0, 1]
-cfg.save_mjb_and_task_config = True
+cfg.save_mjb_and_task_config = False
 
 if __name__ == "__main__":
 
@@ -66,6 +73,7 @@ if __name__ == "__main__":
     parser.add_argument("--auto", action="store_true", help="auto run")
     parser.add_argument("--save_segment", action="store_true", help="save segment videos")
     parser.add_argument('--use_gs', action='store_true', help='Use gaussian splatting renderer')
+    parser.add_argument("--render", action="store_true", help="Render observations after simulation (runs record_playback.py)")
     args = parser.parse_args()
 
     data_idx, data_set_size = args.data_idx, args.data_idx + args.data_set_size
@@ -74,15 +82,10 @@ if __name__ == "__main__":
         cfg.sync = False
     cfg.use_gaussian_renderer = args.use_gs
 
-    save_dir = os.path.join(DISCOVERSE_ROOT_DIR, "data", os.path.splitext(os.path.basename(__file__))[0])
-    if not os.path.exists(save_dir):
-        os.makedirs(save_dir)
-
     sim_node = SimNode(cfg)
-    if hasattr(cfg, "save_mjb_and_task_config") and cfg.save_mjb_and_task_config and data_idx == 0:
-        mujoco.mj_saveModel(sim_node.mj_model, os.path.join(save_dir, os.path.basename(cfg.mjcf_file_path).replace(".xml", ".mjb")))
-        copypy2(os.path.abspath(__file__), os.path.join(save_dir, os.path.basename(__file__)))
-        
+    if data_idx == 0:
+        copypy2(os.path.abspath(__file__), os.path.join(save_dir, os.path.basename(__file__)), save_dir)
+
     arm_ik = SO101_IK()
 
     trmat = Rotation.from_euler("xyz", [0., np.pi/2, 0.], degrees=False).as_matrix()
@@ -91,9 +94,10 @@ if __name__ == "__main__":
 
     stm = SimpleStateMachine()
     stm.max_state_cnt = 9
-    max_time = 10.0 # seconds
-    
+    max_time = 10.0  # seconds
+
     action = np.zeros(6)
+    process_list = []
 
     move_speed = 0.8
     sim_node.reset()
@@ -102,7 +106,7 @@ if __name__ == "__main__":
             sim_node.reset_sig = False
             stm.reset()
             action[:] = sim_node.target_control[:]
-            act_lst, obs_lst = [], []
+            act_lst, obs_lst, state_lst = [], [], []
             save_path = os.path.join(save_dir, "{:03d}".format(data_idx))
             os.makedirs(save_path, exist_ok=True)
             encoders = {cam_id: PyavImageEncoder(cfg.render_set["width"], cfg.render_set["height"], save_path, cam_id) for cam_id in cfg.obs_rgb_cam_id}
@@ -164,19 +168,19 @@ if __name__ == "__main__":
         obs, _, _, _, _ = sim_node.step(action)
 
         if len(obs_lst) < sim_node.mj_data.time * cfg.render_set["fps"]:
-            imgs = obs.pop('img')
-            for cam_id, img in imgs.items():
-                encoders[cam_id].encode(img, obs["time"])
             act_lst.append(action.tolist().copy())
             obs_lst.append(obs)
-            
+            state_lst.append(sim_node.get_mujoco_state())
+
         if stm.state_idx >= stm.max_state_cnt:
             if sim_node.check_success():
-                recoder_so101(save_path, act_lst, obs_lst, cfg)
-                for encoder in encoders.values():
-                    encoder.close()
-               
-
+                save_path = os.path.join(save_dir, "{:03d}".format(data_idx))
+                process = mp.Process(
+                    target=recoder_so101,
+                    args=(save_path, act_lst, obs_lst, cfg, state_lst, True),
+                )
+                process.start()
+                process_list.append(process)
                 data_idx += 1
                 print("\r{:4}/{:4} ".format(data_idx, data_set_size), end="")
                 if data_idx >= data_set_size:
@@ -184,4 +188,29 @@ if __name__ == "__main__":
             else:
                 print(f"{data_idx} Failed")
 
-            sim_node.reset()
+            obs = sim_node.reset()
+
+    for p in process_list:
+        p.join()
+
+    # If --render flag is provided, run record_playback.py to render observations
+    if args.render:
+        print("\n" + "=" * 60)
+        print("Rendering observations from recorded states...")
+        print("=" * 60)
+        import subprocess
+
+        playback_script = os.path.join(save_dir, "record_playback.py")
+        if os.path.exists(playback_script):
+            # Run playback script for all trajectories
+            result = subprocess.run(["python", playback_script, "--all"], cwd=save_dir)
+            if result.returncode == 0:
+                print("\n" + "=" * 60)
+                print("Observation rendering complete!")
+                print("=" * 60)
+            else:
+                print(
+                    f"\nWarning: Playback script exited with code {result.returncode}"
+                )
+        else:
+            print(f"Warning: Playback script not found at {playback_script}")

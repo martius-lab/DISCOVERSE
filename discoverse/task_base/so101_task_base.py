@@ -6,13 +6,12 @@ import numpy as np
 from scipy.spatial.transform import Rotation
 from discoverse.utils import get_random_texture
 import mediapy
-import numpy as np
-import shutil
+import pickle
 
 from discoverse.robots_env.so101_base import SO101Base, SO101Cfg
 from discoverse.utils import get_body_tmat
 
-def recoder_so101(save_path, act_lst, obs_lst, cfg):
+def recoder_so101(save_path, act_lst, obs_lst, cfg, state_lst=None, overview_only=False):
     if os.path.exists(save_path):
         pass
     os.makedirs(save_path, exist_ok=True)
@@ -31,11 +30,29 @@ def recoder_so101(save_path, act_lst, obs_lst, cfg):
         }
         json.dump(obj, fp)
 
-    for id in cfg.obs_rgb_cam_id:
-        if 'img' in obs_lst[0] and obs_lst[0]['img'] is not None:
-            # Check if image data exists for this camera ID
-            if len(obs_lst[0]['img']) > id:
-                mediapy.write_video(os.path.join(save_path, f"cam_{id}.mp4"), [o['img'][id] for o in obs_lst], fps=cfg.render_set["fps"])
+    # Save MuJoCo states if provided (for later playback)
+    # if state_lst is not None:
+    #     np.savez_compressed(os.path.join(save_path, "states.npz"), states=state_lst)
+    if state_lst is not None:
+        with open(os.path.join(save_path, "mujoco_states.pkl"), "wb") as f:
+            pickle.dump(state_lst, f)
+    # Save videos
+    if overview_only:
+        # Only save overview camera (typically camera 0)
+        if len(cfg.obs_rgb_cam_id) > 0:
+            mediapy.write_video(
+                os.path.join(save_path, "overview.mp4"),
+                [o["img"][cfg.obs_rgb_cam_id[0]] for o in obs_lst],
+                fps=cfg.render_set["fps"],
+            )
+    else:
+        # Save all cameras
+        for id in cfg.obs_rgb_cam_id:
+            mediapy.write_video(
+                os.path.join(save_path, f"cam_{id}.mp4"),
+                [o["img"][id] for o in obs_lst],
+                fps=cfg.render_set["fps"],
+            )
 
 class SO101TaskBase(SO101Base):
     target_control = np.zeros(6)
@@ -64,11 +81,11 @@ class SO101TaskBase(SO101Base):
         self.mj_model.body(table_name).pos[2] = self.table_init_posi[2] - change_height
         for obj_name in obj_name_list:
             self.object_pose(obj_name)[2] -= change_height
-    
+
     def random_table_texture(self):
         self.update_texture("tc_texture", get_random_texture())
         self.random_material("tc_texture")
-    
+
     def random_material(self, mtl_name, random_color=False, emission=False):
         try:
             if random_color:
@@ -94,7 +111,7 @@ class SO101TaskBase(SO101Base):
 
         if random_active:
             self.mj_model.light_active[:] = np.int32(np.random.rand(self.mj_model.nlight) > 0.5).tolist()
-        
+
         if np.sum(self.mj_model.light_active) == 0:
             self.mj_model.light_active[np.random.randint(self.mj_model.nlight)] = 1
 
@@ -135,7 +152,7 @@ class SO101TaskBase(SO101Base):
 
     def check_success(self):
         raise NotImplementedError
-    
+
     def on_key(self, window, key, scancode, action, mods):
         ret = super().on_key(window, key, scancode, action, mods)
         if action == glfw.PRESS:
