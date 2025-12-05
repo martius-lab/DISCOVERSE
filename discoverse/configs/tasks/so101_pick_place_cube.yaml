@@ -30,7 +30,7 @@ robot_config:
   
   # Rendering parameters
   rendering:
-    fps: 30
+    fps: 20
     width: 640
     height: 480
   

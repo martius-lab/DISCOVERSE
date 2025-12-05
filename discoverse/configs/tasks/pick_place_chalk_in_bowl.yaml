@@ -1,0 +1,145 @@
+# Pick and Place Chalk Task Configuration
+# SO101 robot picks up a piece of sidewalk chalk and places it into a bowl.
+
+task_name: "pick_place_chalk_in_bowl"
+robot_name: "so101"
+description: "The SO101 robot picks up a piece of Crayola Washable Sidewalk Chalk and places it into a Dixie 10 ounce Bowl."
+
+objects:
+  - "Crayola_Washable_Sidewalk_Chalk_16_pack"
+  - "Dixie_10_ounce_Bowls_35_ct"
+
+robot_config:
+  gs_models:
+    background: "scene/lab3/point_cloud.ply"
+    Crayola_Washable_Sidewalk_Chalk_16_pack: "object/Crayola_Washable_Sidewalk_Chalk_16_pack.ply"
+    Dixie_10_ounce_Bowls_35_ct: "object/Dixie_10_ounce_Bowls_35_ct.ply"
+
+  # Initial joint positions for SO101 (6 total: 5 arm + 1 gripper)
+  init_qpos: [0.0, -0.65, 0.7, 1.0, -0.6, 0.0]
+
+  simulation:
+    timestep: 0.001
+    decimation: 4
+    sync: true
+    headless: false
+
+  rendering:
+    fps: 20
+    width: 640
+    height: 480
+
+  camera_ids: [0]
+  save_mjb_and_task_config: true
+
+randomization:
+  object_positions:
+    - object: "Crayola_Washable_Sidewalk_Chalk_16_pack"
+      position_range:
+        x: 0.06
+        y: 0.06
+        z: 0.01
+
+    - object: "Dixie_10_ounce_Bowls_35_ct"
+      position_range:
+        x: 0.05
+        y: 0.05
+        z: 0.01
+
+  table_height: true
+  table_config:
+    table_name: "table"
+    affected_objects:
+      - "Crayola_Washable_Sidewalk_Chalk_16_pack"
+      - "Dixie_10_ounce_Bowls_35_ct"
+
+  materials:
+    - "Crayola_Washable_Sidewalk_Chalk_16_pack_material"
+    - "Dixie_10_ounce_Bowls_35_ct_material"
+
+  lighting: true
+  light_config:
+    direction: true
+    color: true
+    active: true
+
+action_sequence:
+  # Step 0: Move above chalk
+  - type: "move_to_object"
+    params:
+      object: "Crayola_Washable_Sidewalk_Chalk_16_pack"
+      offset: [0, 0, 0.11]
+      rotation:
+        euler: [0, 180, 0]
+        seq: "xyz"
+        degrees: true
+      gripper: 0.8
+
+  # Step 1: Move closer to chalk
+  - type: "move_to_object"
+    params:
+      object: "Crayola_Washable_Sidewalk_Chalk_16_pack"
+      offset: [0, 0, 0.025]
+      rotation:
+        euler: [0, 180, 0]
+        seq: "xyz"
+        degrees: true
+
+  # Step 2: Grasp the chalk
+  - type: "grasp"
+    params:
+      object: "Crayola_Washable_Sidewalk_Chalk_16_pack"
+      position: 0.0
+
+  # Step 3: Delay for stable grasp
+  - type: "delay"
+    params:
+      duration: 0.18
+
+  # Step 4: Lift chalk up
+  - type: "offset_current"
+    params:
+      offset: [0, 0, 0.13]
+
+  # Step 5: Move above the bowl
+  - type: "move_to_object"
+    params:
+      object: "Dixie_10_ounce_Bowls_35_ct"
+      offset: [0, 0, 0.11]
+      rotation:
+        euler: [0, 180, 0]
+        seq: "xyz"
+        degrees: true
+
+  # Step 6: Lower chalk into bowl
+  - type: "move_to_object"
+    params:
+      object: "Dixie_10_ounce_Bowls_35_ct"
+      offset: [0, 0, 0.045]
+      rotation:
+        euler: [0, 180, 0]
+        seq: "xyz"
+        degrees: true
+
+  # Step 7: Release the chalk
+  - type: "release"
+    params:
+      position: 0.8
+
+  # Step 8: Retreat upward
+  - type: "offset_current"
+    params:
+      offset: [0, 0, 0.09]
+
+success_conditions:
+  position_conditions:
+    - type: "object_near_object"
+      object1: "Crayola_Washable_Sidewalk_Chalk_16_pack"
+      object2: "Dixie_10_ounce_Bowls_35_ct"
+      threshold: 0.06
+
+  custom_conditions:
+    - expression: "get_body_tmat(mj_data, 'Crayola_Washable_Sidewalk_Chalk_16_pack')[2,3] > 0.72"
+
+max_time: 15.0
+move_speed: 0.65

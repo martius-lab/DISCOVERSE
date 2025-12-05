@@ -1,0 +1,19 @@
+<mujoco model="place_chalk_in_bowl">
+  <include file="../object/library_objects/Crayola_Washable_Sidewalk_Chalk_16_pack_dependencies.xml"/>
+  <include file="../object/library_objects/Threshold_Dinner_Plate_Square_Rim_White_Porcelain_dependencies.xml"/>
+  <compiler angle="radian" meshdir="../../meshes/" texturedir="../../meshes/"/>
+  <worldbody>
+    <site name="manipulator_locate" pos="0.3 1.0 0.71" euler="0 0 3.1416"/>
+    <body name="Crayola_Washable_Sidewalk_Chalk_16_pack" pos="0.015 0.92 0.714">
+      <joint type="free" frictionloss="0.00002"/>
+      <inertial pos="0 0 0" mass="0.002" diaginertia="1e-7 1e-7 1e-7"/>
+      <geom type="mesh" mesh="Crayola_Washable_Sidewalk_Chalk_16_pack" condim="4" solimp="2 1 0.01" solref="0.01 1" friction="0.8 0.01 0.001" rgba="0.93 0.88 0.67 1" pos="0 0 0" material="Crayola_Washable_Sidewalk_Chalk_16_pack_material"/>
+      <include file="../object/library_objects/Crayola_Washable_Sidewalk_Chalk_16_pack.xml"/>
+    </body>
+    <body name="Threshold_Dinner_Plate_Square_Rim_White_Porcelain" pos="0.10 0.83 0.710">
+      <joint type="free" frictionloss="0.00005"/>
+      <include file="../object/library_objects/Threshold_Dinner_Plate_Square_Rim_White_Porcelain.xml"/>
+    </body>
+  </worldbody>
+  <include file="../scene/qz_lab3.xml"/>
+</mujoco>

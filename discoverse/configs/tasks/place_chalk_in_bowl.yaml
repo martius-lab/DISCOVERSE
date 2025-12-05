@@ -1,0 +1,143 @@
+# Place Chalk in Bowl Task Configuration
+# The SO101 robot picks up a piece of sidewalk chalk and places it into a porcelain bowl.
+
+task_name: "place_chalk_in_bowl"
+robot_name: "so101"
+description: "SO101 picks up a piece of Crayola Washable Sidewalk Chalk and places it into a porcelain bowl."
+
+objects:
+  - "Crayola_Washable_Sidewalk_Chalk_16_pack"
+  - "Threshold_Dinner_Plate_Square_Rim_White_Porcelain"
+
+robot_config:
+  gs_models:
+    background: "scene/lab3/point_cloud.ply"
+    Crayola_Washable_Sidewalk_Chalk_16_pack: "object/Crayola_Washable_Sidewalk_Chalk_16_pack.ply"
+    Threshold_Dinner_Plate_Square_Rim_White_Porcelain: "object/Threshold_Dinner_Plate_Square_Rim_White_Porcelain.ply"
+  
+  init_qpos: [0.0, -0.6, 0.75, 1.1, -0.7, 0.0]
+
+  simulation:
+    timestep: 0.001
+    decimation: 4
+    sync: true
+    headless: false
+
+  rendering:
+    fps: 20
+    width: 640
+    height: 480
+
+  camera_ids: [0]
+
+  save_mjb_and_task_config: true
+
+randomization:
+  object_positions:
+    - object: "Crayola_Washable_Sidewalk_Chalk_16_pack"
+      position_range:
+        x: 0.04
+        y: 0.06
+        z: 0.01
+
+    - object: "Threshold_Dinner_Plate_Square_Rim_White_Porcelain"
+      position_range:
+        x: 0.07
+        y: 0.05
+
+  table_height: true
+  table_config:
+    table_name: "table"
+    affected_objects:
+      - "Crayola_Washable_Sidewalk_Chalk_16_pack"
+      - "Threshold_Dinner_Plate_Square_Rim_White_Porcelain"
+
+  materials:
+    - "Crayola_Washable_Sidewalk_Chalk_16_pack_material"
+    - "Threshold_Dinner_Plate_Square_Rim_White_Porcelain_material"
+
+  lighting: true
+  light_config:
+    direction: true
+    color: true
+    active: true
+
+action_sequence:
+  # Step 0: Move above chalk
+  - type: "move_to_object"
+    params:
+      object: "Crayola_Washable_Sidewalk_Chalk_16_pack"
+      offset: [0, 0, 0.10]
+      rotation:
+        euler: [0, 180, 0]
+        seq: "xyz"
+        degrees: true
+      gripper: 0.8
+
+  # Step 1: Move down to grasp chalk
+  - type: "move_to_object"
+    params:
+      object: "Crayola_Washable_Sidewalk_Chalk_16_pack"
+      offset: [0, 0, 0.022]
+      rotation:
+        euler: [0, 180, 0]
+        seq: "xyz"
+        degrees: true
+
+  # Step 2: Grasp chalk
+  - type: "grasp"
+    params:
+      position: 0.0
+
+  # Step 3: Wait to stabilize grasp
+  - type: "delay"
+    params:
+      duration: 0.18
+
+  # Step 4: Lift chalk
+  - type: "offset_current"
+    params:
+      offset: [0, 0, 0.10]
+
+  # Step 5: Move above the plate
+  - type: "move_to_object"
+    params:
+      object: "Threshold_Dinner_Plate_Square_Rim_White_Porcelain"
+      offset: [0, 0, 0.10]
+      rotation:
+        euler: [0, 180, 0]
+        seq: "xyz"
+        degrees: true
+
+  # Step 6: Move down to plate/bowl
+  - type: "move_to_object"
+    params:
+      object: "Threshold_Dinner_Plate_Square_Rim_White_Porcelain"
+      offset: [0, 0, 0.03]
+      rotation:
+        euler: [0, 180, 0]
+        seq: "xyz"
+        degrees: true
+
+  # Step 7: Release chalk
+  - type: "release"
+    params:
+      position: 0.8
+
+  # Step 8: Move upward to retreat
+  - type: "offset_current"
+    params:
+      offset: [0, 0, 0.09]
+
+success_conditions:
+  position_conditions:
+    - type: "object_near_object"
+      object1: "Crayola_Washable_Sidewalk_Chalk_16_pack"
+      object2: "Threshold_Dinner_Plate_Square_Rim_White_Porcelain"
+      threshold: 0.055
+
+  custom_conditions:
+    - expression: "get_body_tmat(mj_data, 'Crayola_Washable_Sidewalk_Chalk_16_pack')[2,3] > 0.72"
+
+max_time: 13.0
+move_speed: 0.62
