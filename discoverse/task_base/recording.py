@@ -22,7 +22,7 @@ class Recording:
         self.obs_lst = []
         self.state_lst = []
 
-    def record_episode(self, record_function):
+    def record_episode(self, record_function, success=True):
         save_path = os.path.join(self.save_dir, "{:03d}".format(self.data_idx))
         # Ensure directory exists - though usually created by the environment or before
         os.makedirs(save_path, exist_ok=True)
@@ -33,7 +33,8 @@ class Recording:
         )
         process.start()
         self.process_list.append(process)
-        self.data_idx += 1
+        if success:
+            self.data_idx += 1
 
         # We don't necessarily reset here if the loop does it explicitly,
         # but it's good practice to clear references.

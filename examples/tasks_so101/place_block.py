@@ -20,6 +20,7 @@ class SimNode(SO101TaskBase):
     def __init__(self, config: SO101Cfg):
         super().__init__(config)
         self.camera_0_pose = (self.mj_model.camera("eye_side").pos.copy(), self.mj_model.camera("eye_side").quat.copy())
+        self.tmat_tgt_local = None
 
     def domain_randomization(self):
         # Random block position
@@ -30,6 +31,49 @@ class SimNode(SO101TaskBase):
         self.mj_data.qpos[self.nj+7+0] += 2.*(np.random.random() - 0.5) * 0.05
         self.mj_data.qpos[self.nj+7+1] += 2.*(np.random.random() - 0.5) * 0.05
 
+
+    def move_to_above_block(self, arm_ik, tmat_armbase_2_world, trmat):
+        print("Moving to above the green block")
+        tmat_jujube = get_body_tmat(self.mj_data, "block_green")
+        tmat_jujube[:3, 3] = tmat_jujube[:3, 3] + 0.1 * tmat_jujube[:3, 2]
+        self.tmat_tgt_local = tmat_armbase_2_world @ tmat_jujube
+        self.target_control[:5] = arm_ik.properIK(self.tmat_tgt_local[:3,3], trmat, self.mj_data.qpos[:5])
+        self.target_control[5] = 1.0
+
+    def move_to_block(self, arm_ik, tmat_armbase_2_world, trmat):
+        print("Moving down to the green block")
+        tmat_jujube = get_body_tmat(self.mj_data, "block_green")
+        tmat_jujube[:3, 3] = tmat_jujube[:3, 3] + 0.008 * tmat_jujube[:3, 2] + 0.01 * tmat_jujube[:3, 0] # x
+        self.tmat_tgt_local = tmat_armbase_2_world @ tmat_jujube
+        self.target_control[:5] = arm_ik.properIK(self.tmat_tgt_local[:3,3], trmat, self.mj_data.qpos[:5])
+
+    def grasp_block(self):
+        self.target_control[5] = 0.1
+
+    def stabilize_block(self):
+        self.delay_cnt = int(0.35/self.delta_t)
+
+    def lift_block(self, arm_ik, trmat):
+        self.tmat_tgt_local[2,3] += 0.07
+        self.target_control[:5] = arm_ik.properIK(self.tmat_tgt_local[:3,3], trmat, self.mj_data.qpos[:5])
+
+    def move_block_to_above_bowl(self, arm_ik, tmat_armbase_2_world, trmat):
+        tmat_plate = get_body_tmat(self.mj_data, "bowl_pink")
+        tmat_plate[:3,3] = tmat_plate[:3, 3] + np.array([0.0, 0.0, 0.13])
+        self.tmat_tgt_local = tmat_armbase_2_world @ tmat_plate
+        self.target_control[:5] = arm_ik.properIK(self.tmat_tgt_local[:3,3], trmat, self.mj_data.qpos[:5])
+
+    def place_block_on_bowl(self, arm_ik, trmat):
+        self.target_control[:5] = arm_ik.properIK(self.tmat_tgt_local[:3,3], trmat, self.mj_data.qpos[:5])
+
+    def release_block(self):
+        self.target_control[5] = 1.0
+        print("Releasing the block")
+        print("Set the gripper to:", self.target_control[5])
+
+    def lift_height(self, arm_ik, trmat):
+        self.tmat_tgt_local[2,3] += 0.05
+        self.target_control[:5] = arm_ik.properIK(self.tmat_tgt_local[:3,3], trmat, self.mj_data.qpos[:5])
 
     def check_success(self):
         tmat_block = get_body_tmat(self.mj_data, "block_green")
@@ -110,42 +154,27 @@ if __name__ == "__main__":
             recorder.reset()
             save_path = os.path.join(save_dir, "{:03d}".format(recorder.data_idx))
             os.makedirs(save_path, exist_ok=True)
-            encoders = {cam_id: PyavImageEncoder(cfg.render_set["width"], cfg.render_set["height"], save_path, cam_id) for cam_id in cfg.obs_rgb_cam_id}
         try:
             if stm.trigger():
                 print(f"State: {stm.state_idx}")
                 if stm.state_idx == 0: # Move to above the block
-                    tmat_jujube = get_body_tmat(sim_node.mj_data, "block_green")
-                    tmat_jujube[:3, 3] = tmat_jujube[:3, 3] + 0.1 * tmat_jujube[:3, 2]
-                    tmat_tgt_local = tmat_armbase_2_world @ tmat_jujube
-                    sim_node.target_control[:5] = arm_ik.properIK(tmat_tgt_local[:3,3], trmat, sim_node.mj_data.qpos[:5])
-                    sim_node.target_control[5] = 1.0
+                    sim_node.move_to_above_block(arm_ik, tmat_armbase_2_world, trmat)
                 elif stm.state_idx == 1: # Move to the block
-                    tmat_jujube = get_body_tmat(sim_node.mj_data, "block_green")
-                    tmat_jujube[:3, 3] = tmat_jujube[:3, 3] + 0.008 * tmat_jujube[:3, 2] + 0.01 * tmat_jujube[:3, 0] # x
-                    tmat_tgt_local = tmat_armbase_2_world @ tmat_jujube
-                    sim_node.target_control[:5] = arm_ik.properIK(tmat_tgt_local[:3,3], trmat, sim_node.mj_data.qpos[:5])
+                    sim_node.move_to_block(arm_ik, tmat_armbase_2_world, trmat)
                 elif stm.state_idx == 2: # Grasp the block
-                    sim_node.target_control[5] = 0.0
+                    sim_node.grasp_block()
                 elif stm.state_idx == 3: # Stabilize the block
-                    sim_node.delay_cnt = int(0.35/sim_node.delta_t)
+                    sim_node.stabilize_block()
                 elif stm.state_idx == 4: # Lift the block
-                    tmat_tgt_local[2,3] += 0.07
-                    sim_node.target_control[:5] = arm_ik.properIK(tmat_tgt_local[:3,3], trmat, sim_node.mj_data.qpos[:5])
+                    sim_node.lift_block(arm_ik, trmat)
                 elif stm.state_idx == 5: # Move the block to above the bowl
-                    tmat_plate = get_body_tmat(sim_node.mj_data, "bowl_pink")
-                    tmat_plate[:3,3] = tmat_plate[:3, 3] + np.array([0.0, 0.0, 0.13])
-                    tmat_tgt_local = tmat_armbase_2_world @ tmat_plate
-                    sim_node.target_control[:5] = arm_ik.properIK(tmat_tgt_local[:3,3], trmat, sim_node.mj_data.qpos[:5])
+                    sim_node.move_block_to_above_bowl(arm_ik, tmat_armbase_2_world, trmat)
                 elif stm.state_idx == 6: # Lower the height, place the block on the bowl
-                    sim_node.target_control[:5] = arm_ik.properIK(tmat_tgt_local[:3,3], trmat, sim_node.mj_data.qpos[:5])
+                    sim_node.place_block_on_bowl(arm_ik, trmat)
                 elif stm.state_idx == 7: # Release the block
-                    sim_node.target_control[5] = 1.0
-                    print("Releasing the block")
-                    print("Set the gripper to:", sim_node.target_control[5])
+                    sim_node.release_block()
                 elif stm.state_idx == 8: # Lift height
-                    tmat_tgt_local[2,3] += 0.05
-                    sim_node.target_control[:5] = arm_ik.properIK(tmat_tgt_local[:3,3], trmat, sim_node.mj_data.qpos[:5])
+                    sim_node.lift_height(arm_ik, trmat)
 
                 dif = np.abs(action - sim_node.target_control)
                 sim_node.joint_move_ratio = dif / (np.max(dif) + 1e-6)
