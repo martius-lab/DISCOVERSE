@@ -15,36 +15,58 @@ class PyavImageEncoder:
     def __init__(self, width, height, save_path, id):
         self.width = width
         self.height = height
+        # Ensure directory exists
+        os.makedirs(save_path, exist_ok=True)
         self.av_file_path = os.path.join(save_path, f"cam_{id}.mp4")
         if os.path.exists(self.av_file_path):
             os.remove(self.av_file_path)
-        container = av.open(self.av_file_path, "w", format="mp4")
-        stream: av.video.stream.VideoStream = container.add_stream("h264", options={"preset": "fast"})
-        stream.width = width
-        stream.height = height
-        stream.pix_fmt = "yuv420p"
-        self._time_base = int(1e6)
-        stream.time_base = fractions.Fraction(1, self._time_base)
-        self.container = container
-        self.stream = stream
-        self.start_time = None
-        self.last_time = None
-        self._cnt = 0
+        try:
+            container = av.open(self.av_file_path, "w", format="mp4")
+            stream: av.video.stream.VideoStream = container.add_stream("libx264", rate=30)
+            stream.width = width
+            stream.height = height
+            stream.pix_fmt = "yuv420p"
+            # Set codec options for better compatibility
+            stream.codec_context.options = {"preset": "ultrafast", "tune": "zerolatency"}
+            self._time_base = int(1e6)
+            stream.time_base = fractions.Fraction(1, self._time_base)
+            self.container = container
+            self.stream = stream
+            self.start_time = None
+            self.last_time = None
+            self._cnt = 0
+            self._encoding_failed = False
+        except Exception as e:
+            print(f"Failed to initialize video encoder for cam_{id}: {e}")
+            print(f"  Path: {self.av_file_path}")
+            print(f"  Dimensions: {width}x{height}")
+            self.container = None
+            self.stream = None
+            self._encoding_failed = True
 
     def encode(self, image: np.ndarray, timestamp: float):
-        self._cnt += 1
-        if self.start_time is None:
-            self.start_time = timestamp
-            self.last_time = 0
-            self.container.metadata["comment"] = str({"base_stamp": int(self.start_time * self._time_base)})
-        frame = av.VideoFrame.from_ndarray(image, format="rgb24")
-        cur_time = timestamp
-        frame.pts = int((cur_time - self.start_time) * self._time_base)
-        frame.time_base = self.stream.time_base
-        assert cur_time > self.last_time, f"Time error: {cur_time} <= {self.last_time}"
-        self.last_time = cur_time
-        for packet in self.stream.encode(frame):
-            self.container.mux(packet)
+        # Skip encoding if initialization failed
+        if self._encoding_failed or self.container is None:
+            return
+        
+        try:
+            self._cnt += 1
+            if self.start_time is None:
+                self.start_time = timestamp
+                self.last_time = 0
+                self.container.metadata["comment"] = str({"base_stamp": int(self.start_time * self._time_base)})
+            frame = av.VideoFrame.from_ndarray(image, format="rgb24")
+            cur_time = timestamp
+            frame.pts = int((cur_time - self.start_time) * self._time_base)
+            frame.time_base = self.stream.time_base
+            assert cur_time > self.last_time, f"Time error: {cur_time} <= {self.last_time}"
+            self.last_time = cur_time
+            for packet in self.stream.encode(frame):
+                self.container.mux(packet)
+        except Exception as e:
+            if not self._encoding_failed:
+                print(f"cam_id: {os.path.basename(self.av_file_path).replace('cam_', '').replace('.mp4', '')}[{e.__class__.__name__}] {e}: '{self.av_file_path}'")
+                self._encoding_failed = True
 
     def close(self):
         # print(f"Encoded {self._cnt} frames to {self.container.name}")

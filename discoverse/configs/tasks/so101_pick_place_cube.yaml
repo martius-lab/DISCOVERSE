@@ -1,0 +1,156 @@
+# SO101 Pick and Place Cube Task
+# Simple task: pick up a cube and place it on a target location
+
+task_name: "pick_place_cube"
+robot_name: "so101"
+description: "SO101 robot picks up a cube and places it on a target plate"
+
+# List of objects in the scene
+objects:
+  - "block_green"
+  - "plate_white"
+
+# Robot configuration
+robot_config:
+  # Gaussian Splatting models (optional)
+  gs_models:
+    background: "scene/lab3/point_cloud.ply"
+    block_green: "object/block_green.ply"
+    plate_white: "object/plate_white.ply"
+  
+  # Initial joint positions for SO101 (6 joints: 5 arm + 1 gripper)
+  init_qpos: [0.0, -0.5, 0.8, 1.2, -0.8, 0.0]
+  
+  # Simulation parameters
+  simulation:
+    timestep: 0.001
+    decimation: 4
+    sync: true
+    headless: false
+  
+  # Rendering parameters
+  rendering:
+    fps: 30
+    width: 640
+    height: 480
+  
+  # Camera IDs for observation
+  camera_ids: [0]
+  
+  # Save model and configuration
+  save_mjb_and_task_config: true
+
+# Domain randomization parameters
+randomization:
+  # Randomize object positions
+  object_positions:
+    - object: "block_green"
+      position_range:
+        x: 0.06
+        y: 0.06
+        z: 0.01
+    
+    - object: "plate_white"
+      position_range:
+        x: 0.04
+        y: 0.04
+  
+  # Randomize table height
+  table_height: true
+  table_config:
+    table_name: "table"
+    affected_objects:
+      - "block_green"
+      - "plate_white"
+  
+  # Randomize object materials
+  materials:
+    - "cube_texture"
+    - "plate_texture"
+  
+  # Randomize lighting
+  lighting: true
+  light_config:
+    direction: true
+    color: true
+    active: true
+
+# Action sequence - list of motion primitives
+action_sequence:
+  # Step 0: Approach cube from above
+  - type: "move_to_object"
+    params:
+      object: "block_green"
+      offset: [0, 0, 0.12]
+      rotation:
+        euler: [0, 180, 0]
+        seq: "xyz"
+        degrees: true
+      gripper: 0.8
+  
+  # Step 1: Lower to cube
+  - type: "move_to_object"
+    params:
+      object: "block_green"
+      offset: [0, 0, 0.04]
+      rotation:
+        euler: [0, 180, 0]
+        seq: "xyz"
+        degrees: true
+  
+  # Step 2: Grasp cube
+  - type: "grasp"
+    params:
+      position: 0.0
+  
+  # Step 3: Stabilize grasp
+  - type: "delay"
+    params:
+      duration: 0.2
+  
+  # Step 4: Lift cube
+  - type: "offset_current"
+    params:
+      offset: [0, 0, 0.12]
+  
+  # Step 5: Move to target plate
+  - type: "move_to_object"
+    params:
+      object: "plate_white"
+      offset: [0, 0, 0.12]
+      rotation:
+        euler: [0, 180, 0]
+        seq: "xyz"
+        degrees: true
+  
+  # Step 6: Lower to plate
+  - type: "move_to_object"
+    params:
+      object: "plate_white"
+      offset: [0, 0, 0.06]
+      rotation:
+        euler: [0, 180, 0]
+        seq: "xyz"
+        degrees: true
+  
+  # Step 7: Release cube
+  - type: "release"
+    params:
+      position: 0.8
+  
+  # Step 8: Retreat
+  - type: "offset_current"
+    params:
+      offset: [0, 0, 0.08]
+
+# Success conditions
+success_conditions:
+  position_conditions:
+    - type: "object_near_object"
+      object1: "block_green"
+      object2: "plate_white"
+      threshold: 0.05
+
+# Execution parameters
+max_time: 15.0
+move_speed: 0.65
