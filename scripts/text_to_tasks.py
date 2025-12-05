@@ -27,7 +27,7 @@ def get_path_content(path: str, file_type: str) -> dict[str, str]:
 
 current_file_dir = os.path.dirname(os.path.abspath(__file__))
 
-objects_name = get_path_content(f"/data/zhang/ws/hackathon2025_ws/lerobot_hackathon/discoverse_meshes/library_objects", "dir")
+objects_name = get_path_content(current_file_dir + f"/../models/meshes/library_objects", "dir")
 
 example_output_1_yaml = get_file_content(current_file_dir+"/../discoverse/configs/tasks/so101_pick_place_cube.yaml")
 example_output_1_xml = get_file_content(current_file_dir+"/../models/mjcf/task_environments/pick_place_cube.xml")
@@ -255,8 +255,8 @@ response = client.chat.completions.create(
 output = response.choices[0].message.content
 yaml_match = re.search(r"<YAML_FILE>\s*(.*?)\s*<XML_FILE>", output, re.DOTALL)
 xml_match = re.search(r"<XML_FILE>\s*(.*)", output, re.DOTALL)
-XML_PATH = "/data/zhang/ws/hackathon2025_ws/DISCOVERSE/models/mjcf/task_environments/"
-YAML_PATH = "/data/zhang/ws/hackathon2025_ws/DISCOVERSE/discoverse/configs/tasks/"
+XML_PATH = current_file_dir+f"/../models/mjcf/task_environments/"
+YAML_PATH = current_file_dir+f"/../discoverse/configs/tasks/"
 
 if yaml_match and xml_match:
     yaml_content = yaml_match.group(1).strip()
