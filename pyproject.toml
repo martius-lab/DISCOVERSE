@@ -253,7 +253,7 @@ python_classes = "Test*"
 python_functions = "test_*"
 addopts = "--verbose --tb=short"
 
-[tool.uv.workspace]
-members = [
-    "submodules/diff-gaussian-rasterization",
-]
+#[tool.uv.workspace]
+#members = [
+#    "submodules/diff-gaussian-rasterization",
+#]
