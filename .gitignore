@@ -241,3 +241,8 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+
+# Ingnore the linked dataset folders
+models/meshes/library_objects
+models/mjcf/object/library_objects
