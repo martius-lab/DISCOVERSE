@@ -13,6 +13,7 @@ from discoverse import DISCOVERSE_ROOT_DIR, DISCOVERSE_ASSETS_DIR
 from discoverse.robots_env.so101_base import SO101Cfg
 from discoverse.utils import get_body_tmat, step_func, SimpleStateMachine
 from discoverse.task_base import SO101TaskBase, recoder_so101, copypy2
+from discoverse.task_base.recording import Recording
 from discoverse.task_base.airbot_task_base import PyavImageEncoder
 
 class SimNode(SO101TaskBase):
@@ -97,7 +98,7 @@ if __name__ == "__main__":
     max_time = 10.0  # seconds
 
     action = np.zeros(6)
-    process_list = []
+    recorder = Recording(save_dir, cfg, start_idx=data_idx)
 
     move_speed = 0.8
     sim_node.reset()
@@ -106,8 +107,8 @@ if __name__ == "__main__":
             sim_node.reset_sig = False
             stm.reset()
             action[:] = sim_node.target_control[:]
-            act_lst, obs_lst, state_lst = [], [], []
-            save_path = os.path.join(save_dir, "{:03d}".format(data_idx))
+            recorder.reset()
+            save_path = os.path.join(save_dir, "{:03d}".format(recorder.data_idx))
             os.makedirs(save_path, exist_ok=True)
             encoders = {cam_id: PyavImageEncoder(cfg.render_set["width"], cfg.render_set["height"], save_path, cam_id) for cam_id in cfg.obs_rgb_cam_id}
         try:
@@ -167,50 +168,22 @@ if __name__ == "__main__":
 
         obs, _, _, _, _ = sim_node.step(action)
 
-        if len(obs_lst) < sim_node.mj_data.time * cfg.render_set["fps"]:
-            act_lst.append(action.tolist().copy())
-            obs_lst.append(obs)
-            state_lst.append(sim_node.get_mujoco_state())
+        if len(recorder.obs_lst) < sim_node.mj_data.time * cfg.render_set["fps"]:
+            recorder.add(action.tolist().copy(), obs, sim_node.get_mujoco_state())
 
         if stm.state_idx >= stm.max_state_cnt:
             if sim_node.check_success():
-                save_path = os.path.join(save_dir, "{:03d}".format(data_idx))
-                process = mp.Process(
-                    target=recoder_so101,
-                    args=(save_path, act_lst, obs_lst, cfg, state_lst, True),
-                )
-                process.start()
-                process_list.append(process)
-                data_idx += 1
-                print("\r{:4}/{:4} ".format(data_idx, data_set_size), end="")
-                if data_idx >= data_set_size:
+                recorder.record_episode(recoder_so101)
+                print("\r{:4}/{:4} ".format(recorder.data_idx, data_set_size), end="")
+                if recorder.data_idx >= data_set_size:
                     break
             else:
-                print(f"{data_idx} Failed")
+                print(f"{recorder.data_idx} Failed")
 
             obs = sim_node.reset()
 
-    for p in process_list:
-        p.join()
+    recorder.finish_recording()
 
     # If --render flag is provided, run record_playback.py to render observations
     if args.render:
-        print("\n" + "=" * 60)
-        print("Rendering observations from recorded states...")
-        print("=" * 60)
-        import subprocess
-
-        playback_script = os.path.join(save_dir, "record_playback.py")
-        if os.path.exists(playback_script):
-            # Run playback script for all trajectories
-            result = subprocess.run(["python", playback_script, "--all"], cwd=save_dir)
-            if result.returncode == 0:
-                print("\n" + "=" * 60)
-                print("Observation rendering complete!")
-                print("=" * 60)
-            else:
-                print(
-                    f"\nWarning: Playback script exited with code {result.returncode}"
-                )
-        else:
-            print(f"Warning: Playback script not found at {playback_script}")
+        recorder.export_to_lerobot()
