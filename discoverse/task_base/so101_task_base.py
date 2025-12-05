@@ -10,6 +10,8 @@ import pickle
 
 from discoverse.robots_env.so101_base import SO101Base, SO101Cfg
 from discoverse.utils import get_body_tmat
+from discoverse.utils.lerobot_format import create_dataset, build_dataset_frame, ACTION, OBS_STR, OBS_KEYS, ACTION_KEYS
+from lerobot.datasets.lerobot_dataset import LeRobotDataset
 
 def recoder_so101(save_path, act_lst, obs_lst, cfg, state_lst=None, overview_only=False):
     if os.path.exists(save_path):
@@ -161,3 +163,54 @@ class SO101TaskBase(SO101Base):
             elif key == glfw.KEY_EQUAL:
                 self.mj_model.vis.global_.fovy = np.clip(self.mj_model.vis.global_.fovy*1.05, 5, 175)
         return ret
+
+    def save_lerobot_episode(self, data_path, dataset_path, obs_lst, actions, task_description):
+        # Create LeRobot dataset - dataset will be at dataset_path/discoverse/{robot_name}
+        # LeRobot expects structure: root/repo_id/meta, root/repo_id/data, etc.
+
+        robot_name = data_path.split("/")[-2].split("_")[0]  # e.g., so101_place_block -> so101
+        dataset_id = f"discoverse/{robot_name}"
+        dataset_path = os.path.join(dataset_path, dataset_id)
+        meta_path = os.path.join(dataset_path, "meta")
+
+        if os.path.exists(meta_path):
+            print(f"Loading existing dataset from {dataset_path} with {dataset_id}")
+            # Pass root as the dataset directory, repo_id as "dataset"
+            dataset = LeRobotDataset(repo_id=dataset_id, root=dataset_path)
+        else:
+            print(f"Creating new dataset at {dataset_path} with id: {dataset_id}")
+            dataset = create_dataset(dataset_id=dataset_id, output_dir=dataset_path)
+
+        # Save to LeRobot dataset format
+        print("Saving episode to LeRobot dataset...")
+
+        # Define camera name mapping (camera index to LeRobot camera name)
+        # This should match the camera names in create_dataset in lerobot_format.py
+        camera_name_mapping = {0: "head", 1: "wrist"}
+
+        for t, (act, obs) in enumerate(zip(actions, obs_lst)):
+            # Build action frame
+            act_dict = {k: v for k, v in zip(ACTION_KEYS, act)}
+            act_frame = build_dataset_frame(dataset.features, act_dict, prefix=ACTION)
+
+            # Build observation frame
+            obs_dict = {k: np.rad2deg(v) for k, v in zip(OBS_KEYS, obs['jq'])}
+
+            # Add camera images using the expected camera names
+            if 'img' in obs and isinstance(obs['img'], dict):
+                for cam_id in self.config.obs_rgb_cam_id:
+                    # Map camera index to expected name
+                    cam_name = camera_name_mapping.get(cam_id, f"cam_{cam_id}")
+                    if cam_id in obs['img']:
+                        obs_dict[cam_name] = obs['img'][cam_id]
+
+            obs_frame = build_dataset_frame(dataset.features, obs_dict, prefix=OBS_STR)
+
+            # Combine action and observation
+            frame = {**act_frame, **obs_frame, "task": task_description}
+            dataset.add_frame(frame)
+
+        # Save the episode
+        dataset.save_episode()
+        print(f"Episode saved to dataset: {dataset_path}")
+        print("Videos are stored in the LeRobot dataset structure")
